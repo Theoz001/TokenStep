@@ -156,15 +156,8 @@ struct PopoverPanelView: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
-                        .background(
-                            LinearGradient(
-                                colors: [.tokenGreen, .tokenGreenDark],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: RoundedRectangle(cornerRadius: 17, style: .continuous)
-                        )
-                        .shadow(color: Color.tokenGreenDark.opacity(0.22), radius: 12, x: 0, y: 7)
+                        .background(Color.tokenGreen, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+                        .shadow(color: Color.tokenGreenDark.opacity(0.14), radius: 10, x: 0, y: 6)
                 }
                 .buttonStyle(.plain)
                 .help("打开仪表盘")

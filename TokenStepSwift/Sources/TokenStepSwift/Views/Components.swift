@@ -32,9 +32,9 @@ struct TokenStepBackdrop: View {
             Color.tokenCanvas
             LinearGradient(
                 colors: [
-                    Color.tokenMint.opacity(0.22),
+                    Color.tokenMint.opacity(0.10),
                     Color.clear,
-                    Color.tokenGreen.opacity(0.06)
+                    Color.tokenGreen.opacity(0.025)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -59,14 +59,7 @@ struct TokenStepMark: View {
 
             Circle()
                 .trim(from: 0, to: 0.72)
-                .stroke(
-                    LinearGradient(
-                        colors: [.tokenMint, .tokenGreen, .tokenGreenDark],
-                        startPoint: .bottomLeading,
-                        endPoint: .topTrailing
-                    ),
-                    style: StrokeStyle(lineWidth: size * 0.075, lineCap: .round)
-                )
+                .stroke(Color.tokenGreen, style: StrokeStyle(lineWidth: size * 0.075, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .frame(width: size * 0.66, height: size * 0.66)
 
@@ -135,12 +128,9 @@ struct ProgressRingView: View {
                 .stroke(Color.tokenTrack, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             Circle()
                 .trim(from: 0, to: min(max(progress, 0), 1))
-                .stroke(
-                    LinearGradient(colors: [color.opacity(0.82), color, Color.tokenGreenDark], startPoint: .bottomLeading, endPoint: .topTrailing),
-                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                )
+                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .shadow(color: color.opacity(0.18), radius: 8, x: 0, y: 4)
+                .shadow(color: color.opacity(0.10), radius: 5, x: 0, y: 3)
         }
         .aspectRatio(1, contentMode: .fit)
     }
@@ -355,9 +345,9 @@ func contributionColor(tokens: Int, goal: Int) -> Color {
     }
     let progress = Double(tokens) / Double(max(goal, 1))
     switch progress {
-    case 0.65...: return .tokenGreenDark
-    case 0.35..<0.65: return .tokenGreen
-    case 0.12..<0.35: return .tokenMint
-    default: return .tokenLowActivity
+    case 0.65...: return TokenStepThemeRuntime.palette.activity4.color
+    case 0.35..<0.65: return TokenStepThemeRuntime.palette.activity3.color
+    case 0.12..<0.35: return TokenStepThemeRuntime.palette.activity2.color
+    default: return TokenStepThemeRuntime.palette.activity1.color
     }
 }

@@ -126,17 +126,7 @@ struct MainWindowView: View {
                 .padding(.bottom, 22)
         }
         .frame(width: 226)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color.tokenSurface.opacity(0.98),
-                    Color.tokenGreen.opacity(0.045),
-                    Color.tokenSurface.opacity(0.98)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .background(Color.tokenSurface.opacity(0.94))
     }
 
     private var sidebarFooter: some View {
