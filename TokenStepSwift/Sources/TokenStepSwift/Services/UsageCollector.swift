@@ -515,6 +515,12 @@ enum UsageCollector {
 
     private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
         let lower = model.lowercased()
+        if tool == "Codex", lower.contains("gpt-5.5") {
+            return openAICostByParts(usage: usage, input: 5, cachedInput: 0.5, output: 30)
+        }
+        if tool == "Codex", lower.contains("gpt-5.4") {
+            return openAICostByParts(usage: usage, input: 2.5, cachedInput: 0.25, output: 15)
+        }
         if lower.contains("opus") {
             return costByParts(usage: usage, input: 15, output: 75, cacheCreation: 18.75, cacheRead: 1.5)
         }
@@ -525,6 +531,19 @@ enum UsageCollector {
             return Double(usage.totalTokens) / 1_000_000 * 3
         }
         return Double(usage.totalTokens) / 1_000_000
+    }
+
+    private static func openAICostByParts(
+        usage: TokenUsageCounts,
+        input: Double,
+        cachedInput: Double,
+        output: Double
+    ) -> Double {
+        let cached = max(0, usage.cacheReadInputTokens)
+        let uncachedInput = max(0, usage.inputTokens - cached)
+        return Double(uncachedInput + usage.cacheCreationInputTokens) / 1_000_000 * input
+            + Double(cached) / 1_000_000 * cachedInput
+            + Double(usage.outputTokens + usage.reasoningOutputTokens) / 1_000_000 * output
     }
 
     private static func costByParts(
