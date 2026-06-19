@@ -4,8 +4,12 @@ enum UsageCollector {
     private static let timezone = TimeZone(identifier: "Asia/Shanghai") ?? .current
 
     static func collect() -> UsageSnapshot {
-        let codex = collectCodex()
-        let claude = collectClaudeCode()
+        var cache = loadCache()
+        var livePaths = Set<String>()
+        let codex = collectCodex(cache: &cache, livePaths: &livePaths)
+        let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths)
+        cache.files = cache.files.filter { livePaths.contains($0.key) }
+        saveCache(cache)
         return aggregate(
             records: codex.records + claude.records,
             sources: [
@@ -15,7 +19,75 @@ enum UsageCollector {
         )
     }
 
-    private static func collectCodex() -> CollectorResult {
+    private static func collectCodex(cache: inout CollectorCache, livePaths: inout Set<String>) -> CollectorResult {
+        if let sqliteResult = collectCodexFromSQLite() {
+            return sqliteResult
+        }
+        return collectCodexFromJSONL(cache: &cache, livePaths: &livePaths)
+    }
+
+    private static func collectCodexFromSQLite() -> CollectorResult? {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let candidates = [
+            home.appendingPathComponent(".codex/state_5.sqlite"),
+            home.appendingPathComponent(".codex/sqlite/state_5.sqlite")
+        ]
+        guard let database = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
+            return nil
+        }
+
+        let query = "select created_at, model, tokens_used from threads where tokens_used > 0"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = ["-readonly", "-json", database.path, query]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        guard let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return nil
+        }
+
+        let records = rows.compactMap { row -> UsageRecord? in
+            let tokens = integerValue(row["tokens_used"])
+            guard tokens > 0,
+                  let day = dayString(fromEpoch: row["created_at"])
+            else {
+                return nil
+            }
+            var usage = TokenUsageCounts()
+            usage.totalTokens = tokens
+            return UsageRecord(
+                date: day,
+                timestamp: nil,
+                tool: "Codex",
+                model: modelKey(row["model"] as? String),
+                usage: usage
+            )
+        }
+
+        guard !records.isEmpty else { return nil }
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: "ok_sqlite",
+                files: 1,
+                records: records.count
+            )
+        )
+    }
+
+    private static func collectCodexFromJSONL(cache: inout CollectorCache, livePaths: inout Set<String>) -> CollectorResult {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let roots = [
             home.appendingPathComponent(".codex/sessions", isDirectory: true),
@@ -24,119 +96,136 @@ enum UsageCollector {
         let paths = roots.flatMap { jsonlFiles(under: $0) }
         var records: [UsageRecord] = []
         var seen = Set<String>()
-        var filesRead = 0
 
         for path in paths.sorted(by: { $0.path < $1.path }) {
+            livePaths.insert(path.path)
+            if let cached = cachedRecords(for: path, tool: "Codex", cache: cache) {
+                records.append(contentsOf: cached)
+                continue
+            }
+
+            var fileRecords: [UsageRecord] = []
             var sessionID = path.deletingPathExtension().lastPathComponent
             var currentModel = "unknown"
             var eventIndex = 0
-            guard let handle = try? FileHandle(forReadingFrom: path) else { continue }
-            filesRead += 1
-            defer { try? handle.close() }
+            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
 
-            for line in String(decoding: handle.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true) {
-                guard let obj = jsonObject(String(line)) else { continue }
-                let type = obj["type"] as? String
-                let payload = obj["payload"] as? [String: Any]
+            try? forEachLine(in: path, matchingAny: ["session_meta", "turn_context", "token_count"]) { line in
+                autoreleasepool {
+                    guard let obj = jsonObject(line) else { return }
+                    let type = obj["type"] as? String
+                    let payload = obj["payload"] as? [String: Any]
 
-                if type == "session_meta", let id = payload?["id"] as? String, !id.isEmpty {
-                    sessionID = id
-                }
-                if type == "turn_context" {
-                    currentModel = modelKey(payload?["model"] as? String ?? currentModel)
-                }
-                guard type == "event_msg",
-                      payload?["type"] as? String == "token_count",
-                      let info = payload?["info"] as? [String: Any]
-                else {
-                    continue
-                }
+                    if type == "session_meta", let id = payload?["id"] as? String, !id.isEmpty {
+                        sessionID = id
+                    }
+                    if type == "turn_context" {
+                        currentModel = modelKey(payload?["model"] as? String ?? currentModel)
+                    }
+                    guard type == "event_msg",
+                          payload?["type"] as? String == "token_count",
+                          let info = payload?["info"] as? [String: Any]
+                    else {
+                        return
+                    }
 
-                let usage = normalizeUsage(info["last_token_usage"] as? [String: Any])
-                guard usage.totalTokens > 0,
-                      let timestamp = obj["timestamp"] as? String,
-                      let day = dayString(fromISO: timestamp)
-                else {
-                    continue
-                }
+                    let usage = normalizeUsage(info["last_token_usage"] as? [String: Any])
+                    guard usage.totalTokens > 0,
+                          let timestamp = obj["timestamp"] as? String,
+                          let day = dayString(fromISO: timestamp)
+                    else {
+                        return
+                    }
 
-                eventIndex += 1
-                let key = "\(sessionID)|\(timestamp)|\(eventIndex)|\(usage.totalTokens)"
-                guard !seen.contains(key) else { continue }
-                seen.insert(key)
-                records.append(
-                    UsageRecord(
-                        date: day,
-                        timestamp: timestamp,
-                        tool: "Codex",
-                        model: currentModel,
-                        usage: usage
+                    eventIndex += 1
+                    let key = "\(sessionID)|\(timestamp)|\(eventIndex)|\(usage.totalTokens)"
+                    guard !seen.contains(key) else { return }
+                    seen.insert(key)
+                    fileRecords.append(
+                        UsageRecord(
+                            date: day,
+                            timestamp: timestamp,
+                            tool: "Codex",
+                            model: currentModel,
+                            usage: usage
+                        )
                     )
-                )
+                }
             }
+            records.append(contentsOf: fileRecords)
+            updateCache(path: path, tool: "Codex", records: fileRecords, cache: &cache)
         }
 
         return CollectorResult(
             records: records,
             source: SourceInfo(
                 status: records.isEmpty ? "missing" : "ok",
-                files: filesRead,
+                files: paths.count,
                 records: records.count
             )
         )
     }
 
-    private static func collectClaudeCode() -> CollectorResult {
+    private static func collectClaudeCode(cache: inout CollectorCache, livePaths: inout Set<String>) -> CollectorResult {
         let root = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/projects", isDirectory: true)
         let paths = jsonlFiles(under: root)
         var records: [UsageRecord] = []
         var seen = Set<String>()
-        var filesRead = 0
 
         for path in paths.sorted(by: { $0.path < $1.path }) {
-            guard let handle = try? FileHandle(forReadingFrom: path) else { continue }
-            filesRead += 1
-            defer { try? handle.close() }
+            livePaths.insert(path.path)
+            if let cached = cachedRecords(for: path, tool: "Claude Code", cache: cache) {
+                records.append(contentsOf: cached)
+                continue
+            }
+
+            var fileRecords: [UsageRecord] = []
+            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
 
             var lineNumber = 0
-            for line in String(decoding: handle.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true) {
-                lineNumber += 1
-                guard let obj = jsonObject(String(line)),
-                      obj["type"] as? String == "assistant",
-                      let message = obj["message"] as? [String: Any]
-                else {
-                    continue
-                }
 
-                let usage = normalizeUsage(message["usage"] as? [String: Any])
-                guard usage.totalTokens > 0,
-                      let timestamp = obj["timestamp"] as? String,
-                      let day = dayString(fromISO: timestamp)
-                else {
-                    continue
-                }
+            try? forEachLine(in: path, matchingAny: ["usage"]) { line in
+                autoreleasepool {
+                    lineNumber += 1
+                    guard let obj = jsonObject(line),
+                          obj["type"] as? String == "assistant",
+                          let message = obj["message"] as? [String: Any]
+                    else {
+                        return
+                    }
 
-                let unique = (obj["uuid"] as? String) ?? "\(path.path):\(lineNumber)"
-                guard !seen.contains(unique) else { continue }
-                seen.insert(unique)
-                records.append(
-                    UsageRecord(
-                        date: day,
-                        timestamp: timestamp,
-                        tool: "Claude Code",
-                        model: modelKey(message["model"] as? String),
-                        usage: usage
+                    let usage = normalizeUsage(message["usage"] as? [String: Any])
+                    guard usage.totalTokens > 0,
+                          let timestamp = obj["timestamp"] as? String,
+                          let day = dayString(fromISO: timestamp)
+                    else {
+                        return
+                    }
+
+                    let unique = (obj["uuid"] as? String) ?? "\(path.path):\(lineNumber)"
+                    guard !seen.contains(unique) else { return }
+                    seen.insert(unique)
+                    fileRecords.append(
+                        UsageRecord(
+                            date: day,
+                            timestamp: timestamp,
+                            tool: "Claude Code",
+                            model: modelKey(message["model"] as? String),
+                            usage: usage
+                        )
                     )
-                )
+                }
             }
+            records.append(contentsOf: fileRecords)
+            updateCache(path: path, tool: "Claude Code", records: fileRecords, cache: &cache)
         }
 
         return CollectorResult(
             records: records,
             source: SourceInfo(
                 status: records.isEmpty ? "missing" : "ok",
-                files: filesRead,
+                files: paths.count,
                 records: records.count
             )
         )
@@ -226,6 +315,104 @@ enum UsageCollector {
         }
     }
 
+    private static func cachedRecords(for url: URL, tool: String, cache: CollectorCache) -> [UsageRecord]? {
+        guard let metadata = fileMetadata(for: url),
+              let cached = cache.files[url.path],
+              cached.tool == tool,
+              cached.size == metadata.size,
+              abs(cached.modificationTime - metadata.modificationTime) < 0.001
+        else {
+            return nil
+        }
+        return cached.records
+    }
+
+    private static func updateCache(path: URL, tool: String, records: [UsageRecord], cache: inout CollectorCache) {
+        guard let metadata = fileMetadata(for: path) else { return }
+        cache.files[path.path] = CachedUsageFile(
+            tool: tool,
+            size: metadata.size,
+            modificationTime: metadata.modificationTime,
+            records: records
+        )
+    }
+
+    private static func fileMetadata(for url: URL) -> (size: UInt64, modificationTime: TimeInterval)? {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+              let size = values.fileSize,
+              let modificationDate = values.contentModificationDate
+        else {
+            return nil
+        }
+        return (UInt64(max(0, size)), modificationDate.timeIntervalSince1970)
+    }
+
+    private static func loadCache() -> CollectorCache {
+        guard let data = try? Data(contentsOf: AppPaths.collectorCacheJSON),
+              let cache = try? JSONDecoder().decode(CollectorCache.self, from: data),
+              cache.version == CollectorCache.currentVersion
+        else {
+            return CollectorCache()
+        }
+        return cache
+    }
+
+    private static func saveCache(_ cache: CollectorCache) {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(cache)
+            try FileManager.default.createDirectory(
+                at: AppPaths.collectorCacheJSON.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try data.write(to: AppPaths.collectorCacheJSON, options: .atomic)
+        } catch {
+            // Cache misses should never prevent the app from showing fresh usage.
+        }
+    }
+
+    private static func forEachLine(in url: URL, matchingAny markers: [String] = [], _ body: (String) -> Void) throws {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        let newline = Data([0x0A])
+        let markerData = markers.map { Data($0.utf8) }
+        var buffer = Data()
+        buffer.reserveCapacity(128 * 1024)
+
+        while true {
+            guard let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty else {
+                break
+            }
+            buffer.append(chunk)
+
+            while let range = buffer.firstRange(of: newline) {
+                let lineEnd = range.lowerBound
+                if lineEnd > 0 {
+                    let lineData = buffer.subdata(in: buffer.startIndex..<lineEnd)
+                    if lineMatches(lineData, markers: markerData),
+                       let line = String(data: lineData, encoding: .utf8),
+                       !line.isEmpty {
+                        body(line)
+                    }
+                }
+                buffer.removeSubrange(buffer.startIndex..<range.upperBound)
+            }
+        }
+
+        if !buffer.isEmpty,
+           lineMatches(buffer, markers: markerData),
+           let line = String(data: buffer, encoding: .utf8),
+           !line.isEmpty {
+            body(line)
+        }
+    }
+
+    private static func lineMatches(_ data: Data, markers: [Data]) -> Bool {
+        markers.isEmpty || markers.contains { data.range(of: $0) != nil }
+    }
+
     private static func jsonObject(_ line: String) -> [String: Any]? {
         guard let data = line.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data),
@@ -288,6 +475,20 @@ enum UsageCollector {
     private static func dayString(fromISO value: String) -> String? {
         guard let date = parseISO(value) else { return nil }
         return dayFormatter.string(from: date)
+    }
+
+    private static func dayString(fromEpoch value: Any?) -> String? {
+        let seconds: Double
+        if let int = value as? Int {
+            seconds = Double(int)
+        } else if let double = value as? Double {
+            seconds = double
+        } else if let string = value as? String, let parsed = Double(string) {
+            seconds = parsed
+        } else {
+            return nil
+        }
+        return dayFormatter.string(from: Date(timeIntervalSince1970: seconds))
     }
 
     private static func parseISO(_ value: String) -> Date? {
@@ -367,7 +568,21 @@ private struct CollectorResult {
     var source: SourceInfo
 }
 
-private struct UsageRecord {
+private struct CollectorCache: Codable {
+    static let currentVersion = 1
+
+    var version = currentVersion
+    var files: [String: CachedUsageFile] = [:]
+}
+
+private struct CachedUsageFile: Codable {
+    var tool: String
+    var size: UInt64
+    var modificationTime: TimeInterval
+    var records: [UsageRecord]
+}
+
+private struct UsageRecord: Codable {
     var date: String
     var timestamp: String?
     var tool: String
@@ -375,7 +590,7 @@ private struct UsageRecord {
     var usage: TokenUsageCounts
 }
 
-private struct TokenUsageCounts {
+private struct TokenUsageCounts: Codable {
     var inputTokens = 0
     var outputTokens = 0
     var cacheCreationInputTokens = 0

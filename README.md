@@ -6,7 +6,7 @@ It is a native menu bar app that tracks local usage from supported AI coding age
 
 ## Current Support
 
-- Codex: reads token metadata from `~/.codex/sessions` and `~/.codex/archived_sessions`.
+- Codex: reads local token metadata from Codex SQLite state, with JSONL fallback.
 - Claude Code: reads usage metadata from `~/.claude/projects/**/*.jsonl`.
 
 TokenStep only reads usage metadata such as date, model, client name, and token counts. It does not upload code, prompts, or conversation content.
