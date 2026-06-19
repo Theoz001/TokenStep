@@ -74,21 +74,195 @@ enum UpdateService {
         )
     }
 
-    static func downloadAndOpen(_ update: AvailableUpdate, progress: @escaping @MainActor (Double) -> Void) async throws -> URL {
+    static func downloadAndInstall(
+        _ update: AvailableUpdate,
+        requireVerified: Bool,
+        progress: @escaping @MainActor (Double) -> Void
+    ) async throws -> URL {
         let downloader = UpdateDownloader(progress: progress)
         let temporaryURL = try await downloader.download(from: update.assetURL)
-        let destination = downloadsDirectory.appendingPathComponent(update.assetName)
+        try FileManager.default.createDirectory(at: AppPaths.updates, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: AppPaths.logs, withIntermediateDirectories: true)
+
+        let destination = AppPaths.updates.appendingPathComponent(update.assetName)
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.moveItem(at: temporaryURL, to: destination)
-        _ = await MainActor.run {
-            NSWorkspace.shared.open(destination)
-        }
+        try preflightDMG(destination, requireVerified: requireVerified)
+        try launchInstaller(for: destination, requireVerified: requireVerified)
         return destination
     }
 
-    private static var downloadsDirectory: URL {
-        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+    private static func preflightDMG(_ dmgURL: URL, requireVerified: Bool) throws {
+        let mountPoint = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tokenstep-preflight-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
+        defer {
+            _ = try? runProcess("/usr/bin/hdiutil", arguments: ["detach", mountPoint.path, "-quiet"])
+            try? FileManager.default.removeItem(at: mountPoint)
+        }
+
+        try runProcess("/usr/bin/hdiutil", arguments: ["attach", "-nobrowse", "-quiet", "-mountpoint", mountPoint.path, dmgURL.path])
+        let appURL = try findTokenStepApp(in: mountPoint)
+        guard !requireVerified || isVerifiedApp(appURL) else {
+            throw UpdateError.verificationFailed
+        }
+    }
+
+    private static func findTokenStepApp(in directory: URL) throws -> URL {
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            throw UpdateError.installFailed
+        }
+
+        for case let url as URL in enumerator where url.lastPathComponent == "TokenStep.app" {
+            return url
+        }
+        throw UpdateError.installFailed
+    }
+
+    private static func isVerifiedApp(_ appURL: URL) -> Bool {
+        (try? runProcess("/usr/sbin/spctl", arguments: ["--assess", "--type", "execute", appURL.path])) != nil
+            && (try? runProcess("/usr/bin/codesign", arguments: ["--verify", "--deep", "--strict", appURL.path])) != nil
+    }
+
+    private static func launchInstaller(for dmgURL: URL, requireVerified: Bool) throws {
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tokenstep-install-\(UUID().uuidString)")
+            .appendingPathExtension("sh")
+        let logURL = AppPaths.logs.appendingPathComponent("update-install-\(Int(Date().timeIntervalSince1970)).log")
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        let script = installerScript(
+            dmgPath: dmgURL.path,
+            currentPID: currentPID,
+            logPath: logURL.path,
+            requireVerified: requireVerified,
+            scriptPath: scriptURL.path
+        )
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [scriptURL.path]
+        process.standardOutput = nil
+        process.standardError = nil
+        do {
+            try process.run()
+        } catch {
+            throw UpdateError.installFailed
+        }
+    }
+
+    private static func installerScript(
+        dmgPath: String,
+        currentPID: Int32,
+        logPath: String,
+        requireVerified: Bool,
+        scriptPath: String
+    ) -> String {
+        """
+        #!/bin/bash
+        set -euo pipefail
+
+        DMG=\(shellQuote(dmgPath))
+        DEST="/Applications/TokenStep.app"
+        APP_NAME="TokenStep.app"
+        CURRENT_PID="\(currentPID)"
+        LOG=\(shellQuote(logPath))
+        REQUIRE_VERIFIED="\(requireVerified ? "1" : "0")"
+        SCRIPT_PATH=\(shellQuote(scriptPath))
+        MOUNT_POINT=""
+        BACKUP=""
+
+        mkdir -p "$(dirname "$LOG")"
+        exec >>"$LOG" 2>&1
+        echo "TokenStep update installer started at $(date)"
+
+        cleanup() {
+          if [ -n "$MOUNT_POINT" ] && [ -d "$MOUNT_POINT" ]; then
+            /usr/bin/hdiutil detach "$MOUNT_POINT" -quiet || true
+            /bin/rmdir "$MOUNT_POINT" 2>/dev/null || true
+          fi
+          /bin/rm -f "$SCRIPT_PATH" 2>/dev/null || true
+        }
+        finish() {
+          STATUS=$?
+          if [ "$STATUS" -ne 0 ]; then
+            echo "TokenStep update installer failed with status $STATUS"
+            if [ -n "$BACKUP" ] && [ -d "$BACKUP" ] && [ ! -d "$DEST" ]; then
+              /bin/mv "$BACKUP" "$DEST" || true
+            fi
+            /usr/bin/osascript -e 'display notification "请手动把 DMG 里的 TokenStep 拖到 Applications。" with title "TokenStep 自动更新失败"' || true
+          fi
+          cleanup
+          exit "$STATUS"
+        }
+        trap finish EXIT
+
+        while /bin/kill -0 "$CURRENT_PID" 2>/dev/null; do
+          /bin/sleep 0.2
+        done
+
+        MOUNT_POINT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/tokenstep-update.XXXXXX")"
+        /usr/bin/hdiutil attach -nobrowse -quiet -mountpoint "$MOUNT_POINT" "$DMG"
+
+        SRC="$(/usr/bin/find "$MOUNT_POINT" -name "$APP_NAME" -type d -print -quit)"
+        if [ -z "$SRC" ]; then
+          echo "TokenStep.app not found in DMG"
+          exit 1
+        fi
+
+        if [ "$REQUIRE_VERIFIED" = "1" ]; then
+          /usr/sbin/spctl --assess --type execute "$SRC"
+          /usr/bin/codesign --verify --deep --strict "$SRC"
+        fi
+
+        BACKUP="/Applications/TokenStep.app.previous.$(/bin/date +%s)"
+        if [ -d "$DEST" ]; then
+          /bin/mv "$DEST" "$BACKUP"
+        fi
+
+        if ! /usr/bin/ditto "$SRC" "$DEST"; then
+          /bin/rm -rf "$DEST"
+          if [ -d "$BACKUP" ]; then
+            /bin/mv "$BACKUP" "$DEST"
+          fi
+          echo "Failed to copy TokenStep.app into /Applications"
+          exit 1
+        fi
+
+        if [ -d "$BACKUP" ]; then
+          /bin/rm -rf "$BACKUP"
+        fi
+
+        /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
+        /usr/bin/open "$DEST"
+        echo "TokenStep update installer finished at $(date)"
+        """
+    }
+
+    private static func shellQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
+    }
+
+    @discardableResult
+    private static func runProcess(_ executable: String, arguments: [String]) throws -> Data {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        let output = Pipe()
+        let error = Pipe()
+        process.standardOutput = output
+        process.standardError = error
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw UpdateError.installFailed
+        }
+        return output.fileHandleForReading.readDataToEndOfFile()
     }
 }
 
@@ -96,6 +270,8 @@ enum UpdateError: LocalizedError {
     case checkFailed
     case missingDMG
     case downloadFailed
+    case verificationFailed
+    case installFailed
 
     var errorDescription: String? {
         switch self {
@@ -105,6 +281,10 @@ enum UpdateError: LocalizedError {
             return "新版本没有可下载的 DMG。"
         case .downloadFailed:
             return "下载更新失败，请稍后再试。"
+        case .verificationFailed:
+            return "新版本未通过签名或公证验证，已停止安装。"
+        case .installFailed:
+            return "自动安装失败，请稍后重试，或手动把 TokenStep 拖到 Applications。"
         }
     }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -9,6 +10,7 @@ final class AppState: ObservableObject {
     @Published private(set) var isCheckingForUpdates = false
     @Published private(set) var isDownloadingUpdate = false
     @Published private(set) var updateDownloadProgress = 0.0
+    @Published private(set) var updateInstallStatus = "准备更新"
     @Published private(set) var availableUpdate: AvailableUpdate?
     @Published private(set) var lastUpdateCheckAt: Date?
     @Published private(set) var updateDownloadedURL: URL?
@@ -165,23 +167,30 @@ final class AppState: ObservableObject {
         UpdateWindowPresenter.shared.show(appState: self, update: availableUpdate)
     }
 
-    func downloadAvailableUpdate() {
+    func installAvailableUpdate() {
         guard let update = availableUpdate, !isDownloadingUpdate else { return }
         isDownloadingUpdate = true
         updateDownloadProgress = 0
+        updateInstallStatus = "正在下载"
         updateDownloadedURL = nil
         lastError = nil
         Task {
             do {
-                let url = try await UpdateService.downloadAndOpen(update) { [weak self] progress in
+                let url = try await UpdateService.downloadAndInstall(
+                    update,
+                    requireVerified: settings.requireVerifiedUpdates
+                ) { [weak self] progress in
                     self?.updateDownloadProgress = progress
                 }
                 updateDownloadedURL = url
                 updateDownloadProgress = 1
+                updateInstallStatus = "正在安装并重启"
+                NSApp.terminate(nil)
             } catch {
                 lastError = error.localizedDescription
+                updateInstallStatus = "更新失败"
+                isDownloadingUpdate = false
             }
-            isDownloadingUpdate = false
         }
     }
 

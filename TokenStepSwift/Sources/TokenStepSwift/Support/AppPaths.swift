@@ -11,5 +11,6 @@ enum AppPaths {
     static let collectorCacheJSON = appSupportRoot.appendingPathComponent("cache/collector-cache.json")
     static let settingsJSON = appSupportRoot.appendingPathComponent("config/settings.json")
     static let autostartDefaultMarker = appSupportRoot.appendingPathComponent("config/autostart-default-applied")
+    static let updates = appSupportRoot.appendingPathComponent("updates", isDirectory: true)
     static let logs = appSupportRoot.appendingPathComponent("logs", isDirectory: true)
 }

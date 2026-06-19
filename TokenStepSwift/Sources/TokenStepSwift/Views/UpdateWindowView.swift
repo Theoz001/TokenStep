@@ -28,7 +28,7 @@ struct UpdateWindowView: View {
                 Text("TokenStep \(update.version) 可用")
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
-                Text("建议安装：更低内存占用，更快刷新")
+                Text("安装完成后会自动重启到新版本")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -70,10 +70,10 @@ struct UpdateWindowView: View {
                 .background(Color.tokenMint.opacity(0.28), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("只下载 GitHub Release 的 DMG")
+                Text("自动安装到 Applications")
                     .font(.callout.weight(.heavy))
                     .foregroundStyle(Color.tokenInk)
-                Text("安装时由 macOS Gatekeeper 验证签名与公证")
+                Text("下载后会验证 DMG 中的 App，并替换旧版本")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -97,7 +97,7 @@ struct UpdateWindowView: View {
         if appState.isDownloadingUpdate {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("正在下载")
+                    Text(appState.updateInstallStatus)
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -144,11 +144,11 @@ struct UpdateWindowView: View {
             .disabled(appState.isDownloadingUpdate)
 
             Button {
-                appState.downloadAvailableUpdate()
+                appState.installAvailableUpdate()
             } label: {
-                Text(appState.isDownloadingUpdate ? "下载中" : "下载并打开")
+                Text(appState.isDownloadingUpdate ? "安装中" : "安装并重启")
                     .font(.callout.weight(.heavy))
-                    .frame(width: 116, height: 38)
+                    .frame(width: 126, height: 38)
             }
             .buttonStyle(SettingsPrimaryButtonStyle())
             .disabled(appState.isDownloadingUpdate)
