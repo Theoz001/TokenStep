@@ -6,6 +6,12 @@ final class AppState: ObservableObject {
     @Published private(set) var settings: TokenStepSettings = .defaults
     @Published private(set) var isRefreshing = false
     @Published private(set) var autostartEnabled = false
+    @Published private(set) var isCheckingForUpdates = false
+    @Published private(set) var isDownloadingUpdate = false
+    @Published private(set) var updateDownloadProgress = 0.0
+    @Published private(set) var availableUpdate: AvailableUpdate?
+    @Published private(set) var lastUpdateCheckAt: Date?
+    @Published private(set) var updateDownloadedURL: URL?
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -15,6 +21,7 @@ final class AppState: ObservableObject {
         applyDefaultAutostartIfNeeded()
         configureTimer()
         refresh()
+        checkForUpdatesIfNeeded()
     }
 
     deinit {
@@ -85,6 +92,24 @@ final class AppState: ObservableObject {
         configureTimer()
     }
 
+    func setAutoUpdateEnabled(_ enabled: Bool) {
+        settings.autoUpdateEnabled = enabled
+        saveSettingsAndReload()
+        if enabled {
+            checkForUpdates(silent: true)
+        }
+    }
+
+    func setAskBeforeDownloadingUpdates(_ enabled: Bool) {
+        settings.askBeforeDownloadingUpdates = enabled
+        saveSettingsAndReload()
+    }
+
+    func setRequireVerifiedUpdates(_ enabled: Bool) {
+        settings.requireVerifiedUpdates = enabled
+        saveSettingsAndReload()
+    }
+
     func setAutostart(_ enabled: Bool) {
         do {
             try AutostartService.setEnabled(enabled)
@@ -93,6 +118,71 @@ final class AppState: ObservableObject {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    func checkForUpdates(silent: Bool = false) {
+        guard !isCheckingForUpdates else { return }
+        guard settings.autoUpdateEnabled || !silent else { return }
+        isCheckingForUpdates = true
+        if !silent {
+            lastError = nil
+        }
+        Task {
+            do {
+                let result = try await UpdateService.checkForUpdates()
+                lastUpdateCheckAt = Date()
+                switch result {
+                case .upToDate:
+                    availableUpdate = nil
+                case let .available(update):
+                    availableUpdate = settings.skippedUpdateVersion == update.version ? nil : update
+                }
+            } catch {
+                if !silent {
+                    lastError = error.localizedDescription
+                }
+            }
+            isCheckingForUpdates = false
+        }
+    }
+
+    func showUpdateDetails() {
+        guard let availableUpdate else {
+            checkForUpdates(silent: false)
+            return
+        }
+        UpdateWindowPresenter.shared.show(appState: self, update: availableUpdate)
+    }
+
+    func downloadAvailableUpdate() {
+        guard let update = availableUpdate, !isDownloadingUpdate else { return }
+        isDownloadingUpdate = true
+        updateDownloadProgress = 0
+        updateDownloadedURL = nil
+        lastError = nil
+        Task {
+            do {
+                let url = try await UpdateService.downloadAndOpen(update) { [weak self] progress in
+                    self?.updateDownloadProgress = progress
+                }
+                updateDownloadedURL = url
+                updateDownloadProgress = 1
+            } catch {
+                lastError = error.localizedDescription
+            }
+            isDownloadingUpdate = false
+        }
+    }
+
+    func postponeUpdateNotice() {
+        availableUpdate = nil
+    }
+
+    func skipAvailableUpdate() {
+        guard let version = availableUpdate?.version else { return }
+        settings.skippedUpdateVersion = version
+        availableUpdate = nil
+        saveSettingsAndReload()
     }
 
     private func saveSettingsAndReload() {
@@ -114,6 +204,11 @@ final class AppState: ObservableObject {
                 self?.refresh()
             }
         }
+    }
+
+    private func checkForUpdatesIfNeeded() {
+        guard settings.autoUpdateEnabled else { return }
+        checkForUpdates(silent: true)
     }
 
     private func applyDefaultAutostartIfNeeded() {

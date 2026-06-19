@@ -23,6 +23,10 @@ It stores:
 - `config/settings.json`: daily goal and refresh settings
 - `logs/`: login item logs
 
+## Updates
+
+TokenStep checks GitHub Releases for new versions by default. When a new signed release is available, the menu bar popover and Settings window show an update prompt. TokenStep downloads the DMG to Downloads and opens it; macOS verifies the app when you install it.
+
 ## Login Item
 
 TokenStep enables login launch by default on first run so usage tracking is less likely to miss a day. You can turn this off in Settings.

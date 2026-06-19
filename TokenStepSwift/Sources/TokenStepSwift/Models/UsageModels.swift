@@ -86,16 +86,58 @@ struct TokenStepSettings: Codable {
     var dailyGoalTokens: Int
     var refreshIntervalSeconds: Int
     var historyDays: Int
+    var autoUpdateEnabled: Bool
+    var askBeforeDownloadingUpdates: Bool
+    var requireVerifiedUpdates: Bool
+    var skippedUpdateVersion: String?
 
     enum CodingKeys: String, CodingKey {
         case dailyGoalTokens = "daily_goal_tokens"
         case refreshIntervalSeconds = "refresh_interval_seconds"
         case historyDays = "history_days"
+        case autoUpdateEnabled = "auto_update_enabled"
+        case askBeforeDownloadingUpdates = "ask_before_downloading_updates"
+        case requireVerifiedUpdates = "require_verified_updates"
+        case skippedUpdateVersion = "skipped_update_version"
     }
 
     static let defaults = TokenStepSettings(
         dailyGoalTokens: 100_000_000,
         refreshIntervalSeconds: 60,
-        historyDays: 180
+        historyDays: 180,
+        autoUpdateEnabled: true,
+        askBeforeDownloadingUpdates: true,
+        requireVerifiedUpdates: true,
+        skippedUpdateVersion: nil
     )
+
+    init(
+        dailyGoalTokens: Int,
+        refreshIntervalSeconds: Int,
+        historyDays: Int,
+        autoUpdateEnabled: Bool,
+        askBeforeDownloadingUpdates: Bool,
+        requireVerifiedUpdates: Bool,
+        skippedUpdateVersion: String?
+    ) {
+        self.dailyGoalTokens = dailyGoalTokens
+        self.refreshIntervalSeconds = refreshIntervalSeconds
+        self.historyDays = historyDays
+        self.autoUpdateEnabled = autoUpdateEnabled
+        self.askBeforeDownloadingUpdates = askBeforeDownloadingUpdates
+        self.requireVerifiedUpdates = requireVerifiedUpdates
+        self.skippedUpdateVersion = skippedUpdateVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = TokenStepSettings.defaults
+        dailyGoalTokens = try container.decodeIfPresent(Int.self, forKey: .dailyGoalTokens) ?? defaults.dailyGoalTokens
+        refreshIntervalSeconds = try container.decodeIfPresent(Int.self, forKey: .refreshIntervalSeconds) ?? defaults.refreshIntervalSeconds
+        historyDays = try container.decodeIfPresent(Int.self, forKey: .historyDays) ?? defaults.historyDays
+        autoUpdateEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoUpdateEnabled) ?? defaults.autoUpdateEnabled
+        askBeforeDownloadingUpdates = try container.decodeIfPresent(Bool.self, forKey: .askBeforeDownloadingUpdates) ?? defaults.askBeforeDownloadingUpdates
+        requireVerifiedUpdates = try container.decodeIfPresent(Bool.self, forKey: .requireVerifiedUpdates) ?? defaults.requireVerifiedUpdates
+        skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
+    }
 }

@@ -35,8 +35,8 @@ final class SettingsWindowPresenter {
         window.titlebarSeparatorStyle = .none
         window.toolbarStyle = .unifiedCompact
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 920, height: 700)
-        window.setContentSize(NSSize(width: 920, height: 700))
+        window.minSize = NSSize(width: 920, height: 760)
+        window.setContentSize(NSSize(width: 920, height: 760))
         window.center()
         window.setFrameAutosaveName("TokenStepSettingsWindow")
         return window

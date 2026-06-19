@@ -13,23 +13,26 @@ struct SettingsView: View {
         ZStack {
             TokenStepBackdrop()
 
-            VStack(alignment: .leading, spacing: 22) {
-                header
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 22) {
+                    header
 
-                LazyVGrid(columns: columns, spacing: 18) {
-                    dailyGoalCard
-                    refreshCard
-                    autostartCard
-                    privacyCard
+                    LazyVGrid(columns: columns, spacing: 18) {
+                        dailyGoalCard
+                        refreshCard
+                        updateCard
+                        autostartCard
+                        privacyCard
+                    }
+
+                    footer
                 }
-
-                footer
+                .padding(.top, 36)
+                .padding(.horizontal, 34)
+                .padding(.bottom, 24)
             }
-            .padding(.top, 36)
-            .padding(.horizontal, 34)
-            .padding(.bottom, 24)
         }
-        .frame(width: 920, height: 700)
+        .frame(width: 920, height: 760)
     }
 
     private var header: some View {
@@ -179,6 +182,69 @@ struct SettingsView: View {
         }
     }
 
+    private var updateCard: some View {
+        SettingsCard(title: "自动更新", symbol: "arrow.down.circle.fill") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("自动检查 TokenStep 新版本")
+                            .font(.headline.weight(.heavy))
+                            .foregroundStyle(Color.tokenInk)
+                        Text("有更新时先提醒你，下载前会确认。")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: Binding(
+                        get: { appState.settings.autoUpdateEnabled },
+                        set: { appState.setAutoUpdateEnabled($0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                }
+
+                VStack(spacing: 8) {
+                    SettingsToggleRow(
+                        title: "下载前询问",
+                        isOn: Binding(
+                            get: { appState.settings.askBeforeDownloadingUpdates },
+                            set: { appState.setAskBeforeDownloadingUpdates($0) }
+                        )
+                    )
+                    SettingsToggleRow(
+                        title: "仅安装已签名公证版本",
+                        isOn: Binding(
+                            get: { appState.settings.requireVerifiedUpdates },
+                            set: { appState.setRequireVerifiedUpdates($0) }
+                        )
+                    )
+                }
+
+                HStack(spacing: 10) {
+                    StatusLine(
+                        symbol: appState.availableUpdate == nil ? "checkmark.circle.fill" : "arrow.down.circle.fill",
+                        title: appState.availableUpdate == nil ? "当前版本 \(UpdateService.currentVersion)" : "发现 \(appState.availableUpdate?.version ?? "")",
+                        value: updateCheckStatus,
+                        tint: appState.availableUpdate == nil ? .tokenGreen : .tokenGreenDark
+                    )
+
+                    Button {
+                        appState.checkForUpdates(silent: false)
+                    } label: {
+                        Text(appState.isCheckingForUpdates ? "检查中" : "检查更新")
+                            .font(.caption.weight(.heavy))
+                            .frame(width: 76, height: 34)
+                    }
+                    .buttonStyle(SettingsSecondaryButtonStyle())
+                    .disabled(appState.isCheckingForUpdates)
+                }
+            }
+        }
+    }
+
     private var privacyCard: some View {
         SettingsCard(title: "隐私状态", symbol: "checkmark.shield.fill") {
             VStack(alignment: .leading, spacing: 14) {
@@ -228,6 +294,9 @@ struct SettingsView: View {
             Button {
                 appState.setGoal(TokenStepSettings.defaults.dailyGoalTokens)
                 appState.setRefreshInterval(TokenStepSettings.defaults.refreshIntervalSeconds)
+                appState.setAutoUpdateEnabled(TokenStepSettings.defaults.autoUpdateEnabled)
+                appState.setAskBeforeDownloadingUpdates(TokenStepSettings.defaults.askBeforeDownloadingUpdates)
+                appState.setRequireVerifiedUpdates(TokenStepSettings.defaults.requireVerifiedUpdates)
                 appState.setAutostart(true)
             } label: {
                 Text("恢复默认")
@@ -255,6 +324,21 @@ struct SettingsView: View {
             RefreshOption(seconds: 900, title: "15 分钟"),
             RefreshOption(seconds: 0, title: "手动")
         ]
+    }
+
+    private var updateCheckStatus: String {
+        if appState.isCheckingForUpdates {
+            return "正在检查"
+        }
+        if appState.availableUpdate != nil {
+            return "可更新"
+        }
+        guard let date = appState.lastUpdateCheckAt else {
+            return "尚未检查"
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return "\(formatter.string(from: date))"
     }
 }
 
@@ -361,6 +445,27 @@ private struct RefreshOptionButton: View {
     }
 }
 
+private struct SettingsToggleRow: View {
+    var title: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(isOn ? Color.tokenGreen : Color.secondary.opacity(0.65))
+            Text(title)
+                .font(.callout.weight(.bold))
+                .foregroundStyle(Color.tokenInk.opacity(0.78))
+            Spacer()
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+        }
+    }
+}
+
 private struct StatusLine: View {
     var symbol: String
     var title: String
@@ -437,7 +542,7 @@ private struct PrivacyMetaChip: View {
     }
 }
 
-private struct SettingsPrimaryButtonStyle: ButtonStyle {
+struct SettingsPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
@@ -446,7 +551,7 @@ private struct SettingsPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-private struct SettingsSecondaryButtonStyle: ButtonStyle {
+struct SettingsSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(Color.tokenInk.opacity(0.72))

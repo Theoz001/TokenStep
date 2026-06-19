@@ -30,6 +30,7 @@ For more detail, see [docs/INSTALL.md](docs/INSTALL.md).
 - Popover with today's AI steps, goal progress, spend estimate, and recent activity.
 - Native dashboard for Today, History, Stats, and Privacy.
 - Settings for daily goal, refresh interval, login launch, and privacy status.
+- Automatic update checks for signed GitHub Release downloads.
 - Local data storage under `~/Library/Application Support/TokenStep`.
 
 ## Privacy

@@ -1,0 +1,165 @@
+import SwiftUI
+
+struct UpdateWindowView: View {
+    @EnvironmentObject private var appState: AppState
+    var update: AvailableUpdate
+
+    var body: some View {
+        ZStack {
+            TokenStepBackdrop()
+
+            VStack(alignment: .leading, spacing: 22) {
+                header
+                releaseNotes
+                trustPanel
+                progressPanel
+                footer
+            }
+            .padding(28)
+        }
+        .frame(width: 560, height: 500)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 16) {
+            TokenStepMark(size: 60)
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("TokenStep \(update.version) 可用")
+                    .font(.system(size: 28, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Color.tokenInk)
+                Text("建议安装：更低内存占用，更快刷新")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+    }
+
+    private var releaseNotes: some View {
+        TokenCard {
+            VStack(alignment: .leading, spacing: 13) {
+                Text("更新内容")
+                    .font(.headline.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk)
+
+                let notes = update.noteLines.isEmpty ? defaultNotes : update.noteLines
+                ForEach(Array(notes.enumerated()), id: \.offset) { _, note in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color.tokenGreen)
+                            .padding(.top, 2)
+                        Text(note)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(Color.tokenInk.opacity(0.78))
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var trustPanel: some View {
+        HStack(spacing: 11) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 17, weight: .heavy))
+                .foregroundStyle(Color.tokenGreenDark)
+                .frame(width: 34, height: 34)
+                .background(Color.tokenMint.opacity(0.28), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("只下载 GitHub Release 的 DMG")
+                    .font(.callout.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk)
+                Text("安装时由 macOS Gatekeeper 验证签名与公证")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(update.formattedSize)
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(Color.tokenInk.opacity(0.65))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.tokenTrack.opacity(0.38), in: Capsule())
+        }
+        .padding(13)
+        .background(Color.tokenSurface.opacity(0.86), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.black.opacity(0.055)))
+    }
+
+    @ViewBuilder
+    private var progressPanel: some View {
+        if appState.isDownloadingUpdate {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("正在下载")
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(TokenStepFormat.percent(appState.updateDownloadProgress * 100))
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk.opacity(0.7))
+                }
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.tokenTrack)
+                        Capsule()
+                            .fill(Color.tokenGreen)
+                            .frame(width: proxy.size.width * min(max(appState.updateDownloadProgress, 0), 1))
+                    }
+                }
+                .frame(height: 8)
+            }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            Button {
+                appState.skipAvailableUpdate()
+                UpdateWindowPresenter.shared.close()
+            } label: {
+                Text("跳过此版本")
+                    .font(.callout.weight(.bold))
+                    .frame(width: 100, height: 38)
+            }
+            .buttonStyle(SettingsSecondaryButtonStyle())
+            .disabled(appState.isDownloadingUpdate)
+
+            Spacer()
+
+            Button {
+                UpdateWindowPresenter.shared.close()
+            } label: {
+                Text("稍后")
+                    .font(.callout.weight(.bold))
+                    .frame(width: 76, height: 38)
+            }
+            .buttonStyle(SettingsSecondaryButtonStyle())
+            .disabled(appState.isDownloadingUpdate)
+
+            Button {
+                appState.downloadAvailableUpdate()
+            } label: {
+                Text(appState.isDownloadingUpdate ? "下载中" : "下载并打开")
+                    .font(.callout.weight(.heavy))
+                    .frame(width: 116, height: 38)
+            }
+            .buttonStyle(SettingsPrimaryButtonStyle())
+            .disabled(appState.isDownloadingUpdate)
+        }
+    }
+
+    private var defaultNotes: [String] {
+        [
+            "优化 Codex 历史数据读取",
+            "降低后台刷新 CPU 占用",
+            "提升菜单栏同步稳定性"
+        ]
+    }
+}
