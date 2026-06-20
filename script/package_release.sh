@@ -58,8 +58,11 @@ TOKENSTEP_VERSION="$VERSION" "$ROOT_DIR/script/build_swiftui_and_run.sh" --no-la
 
 echo "Signing app with Developer ID..."
 find "$APP_BUNDLE" \( -name ".DS_Store" -o -name "*.nssyncsc" \) -delete
+if [[ -f "$APP_BUNDLE/Contents/Helpers/TokenStepHelper" ]]; then
+  codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP_BUNDLE/Contents/Helpers/TokenStepHelper"
+fi
 codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP_BUNDLE"
-codesign --verify --strict --verbose=2 "$APP_BUNDLE"
+codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
 ZIP_PATH="$RELEASE_DIR/$APP_NAME-$VERSION.zip"
 DMG_STAGING="$RELEASE_DIR/dmg-staging"
