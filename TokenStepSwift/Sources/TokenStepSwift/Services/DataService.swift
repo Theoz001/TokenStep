@@ -52,6 +52,7 @@ enum DataService {
             requireVerifiedUpdates: settings.requireVerifiedUpdates,
             tokenIslandEnabled: placement != .menuBar,
             tokenIslandPlacement: placement,
+            showCodexQuota: settings.showCodexQuota,
             language: settings.language,
             skippedUpdateVersion: settings.skippedUpdateVersion
         )

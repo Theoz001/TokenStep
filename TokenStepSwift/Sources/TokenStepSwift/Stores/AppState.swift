@@ -98,6 +98,9 @@ final class AppState: ObservableObject {
         TokenStepThemeRuntime.apply(loadedSettings.theme)
         settings = loadedSettings
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
+        if !loadedSettings.showCodexQuota {
+            codexQuota = .unavailable
+        }
         autostartEnabled = AutostartService.isEnabled
     }
 
@@ -120,6 +123,11 @@ final class AppState: ObservableObject {
     }
 
     func refreshCodexQuota() {
+        guard settings.showCodexQuota else {
+            codexQuota = .unavailable
+            isRefreshingCodexQuota = false
+            return
+        }
         guard !isRefreshingCodexQuota else { return }
         isRefreshingCodexQuota = true
         Task {
@@ -178,6 +186,17 @@ final class AppState: ObservableObject {
         settings.tokenIslandEnabled = placement != .menuBar
         saveSettingsAndReload()
         refreshTokenIslandAvailability()
+    }
+
+    func setCodexQuotaVisible(_ visible: Bool) {
+        settings.showCodexQuota = visible
+        saveSettingsAndReload()
+        if visible {
+            refreshCodexQuota()
+        } else {
+            codexQuota = .unavailable
+            isRefreshingCodexQuota = false
+        }
     }
 
     func setAutoUpdateEnabled(_ enabled: Bool) {

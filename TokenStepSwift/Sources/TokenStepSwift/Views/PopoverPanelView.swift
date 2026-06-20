@@ -14,7 +14,9 @@ struct PopoverPanelView: View {
                 }
             }
             todayCard
-            codexQuotaCard
+            if appState.settings.showCodexQuota {
+                codexQuotaCard
+            }
             trendCard
             if let update = appState.availableUpdate {
                 UpdateNoticeCard(update: update)

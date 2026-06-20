@@ -217,6 +217,7 @@ struct TokenStepSettings: Codable {
     var requireVerifiedUpdates: Bool
     var tokenIslandEnabled: Bool
     var tokenIslandPlacement: TokenIslandDisplayPlacement
+    var showCodexQuota: Bool
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
 
@@ -230,6 +231,7 @@ struct TokenStepSettings: Codable {
         case requireVerifiedUpdates = "require_verified_updates"
         case tokenIslandEnabled = "token_island_enabled"
         case tokenIslandPlacement = "token_island_placement"
+        case showCodexQuota = "show_codex_quota"
         case language
         case skippedUpdateVersion = "skipped_update_version"
     }
@@ -244,6 +246,7 @@ struct TokenStepSettings: Codable {
         requireVerifiedUpdates: true,
         tokenIslandEnabled: true,
         tokenIslandPlacement: .automatic,
+        showCodexQuota: false,
         language: .system,
         skippedUpdateVersion: nil
     )
@@ -258,6 +261,7 @@ struct TokenStepSettings: Codable {
         requireVerifiedUpdates: Bool,
         tokenIslandEnabled: Bool,
         tokenIslandPlacement: TokenIslandDisplayPlacement,
+        showCodexQuota: Bool,
         language: TokenStepLanguage,
         skippedUpdateVersion: String?
     ) {
@@ -270,6 +274,7 @@ struct TokenStepSettings: Codable {
         self.requireVerifiedUpdates = requireVerifiedUpdates
         self.tokenIslandEnabled = tokenIslandEnabled
         self.tokenIslandPlacement = tokenIslandPlacement
+        self.showCodexQuota = showCodexQuota
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
     }
@@ -294,6 +299,7 @@ struct TokenStepSettings: Codable {
         } else {
             tokenIslandPlacement = defaults.tokenIslandPlacement
         }
+        showCodexQuota = try container.decodeIfPresent(Bool.self, forKey: .showCodexQuota) ?? defaults.showCodexQuota
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
     }

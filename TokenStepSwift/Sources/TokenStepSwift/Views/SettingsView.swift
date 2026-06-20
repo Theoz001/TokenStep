@@ -222,7 +222,7 @@ struct SettingsView: View {
 
     private var displayCard: some View {
         SettingsCard(title: L("显示入口"), symbol: "macwindow.badge.plus") {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(L("显示位置"))
                         .font(.headline.weight(.heavy))
@@ -249,6 +249,14 @@ struct SettingsView: View {
                     title: appState.tokenIslandStatus,
                     value: appState.tokenIslandStatusDetail,
                     tint: appState.shouldShowTokenIsland ? .tokenGreen : .gray
+                )
+
+                SettingsToggleRow(
+                    title: L("Codex 额度显示"),
+                    isOn: Binding(
+                        get: { appState.settings.showCodexQuota },
+                        set: { appState.setCodexQuotaVisible($0) }
+                    )
                 )
             }
         }
@@ -466,6 +474,7 @@ struct SettingsView: View {
                 appState.setAskBeforeDownloadingUpdates(TokenStepSettings.defaults.askBeforeDownloadingUpdates)
                 appState.setRequireVerifiedUpdates(TokenStepSettings.defaults.requireVerifiedUpdates)
                 appState.setTokenIslandPlacement(TokenStepSettings.defaults.tokenIslandPlacement)
+                appState.setCodexQuotaVisible(TokenStepSettings.defaults.showCodexQuota)
                 appState.setAutostart(true)
             } label: {
                 Text(L("恢复默认"))
