@@ -104,7 +104,7 @@ enum UpdateService {
             .appendingPathComponent("tokenstep-preflight-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
         defer {
-            _ = try? runProcess("/usr/bin/hdiutil", arguments: ["detach", mountPoint.path, "-quiet"])
+            _ = try? runProcess("/usr/bin/hdiutil", arguments: ["detach", mountPoint.path, "-force", "-quiet"])
             try? FileManager.default.removeItem(at: mountPoint)
         }
 
@@ -186,6 +186,7 @@ enum UpdateService {
         REQUIRE_VERIFIED="\(requireVerified ? "1" : "0")"
         SCRIPT_PATH=\(shellQuote(scriptPath))
         MOUNT_POINT=""
+        MOUNT_ROOT=""
         BACKUP=""
 
         mkdir -p "$(dirname "$LOG")"
@@ -197,8 +198,10 @@ enum UpdateService {
 
         cleanup() {
           if [ -n "$MOUNT_POINT" ] && [ -d "$MOUNT_POINT" ]; then
-            /usr/bin/hdiutil detach "$MOUNT_POINT" -quiet || true
-            /bin/rmdir "$MOUNT_POINT" 2>/dev/null || true
+            /usr/bin/hdiutil detach "$MOUNT_POINT" -force -quiet || true
+          fi
+          if [ -n "$MOUNT_ROOT" ] && [ -d "$MOUNT_ROOT" ]; then
+            /bin/rm -rf "$MOUNT_ROOT" 2>/dev/null || true
           fi
           /bin/rm -f "$SCRIPT_PATH" 2>/dev/null || true
         }
@@ -216,9 +219,35 @@ enum UpdateService {
         }
         trap finish EXIT
 
-        MOUNT_POINT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/tokenstep-update.XXXXXX")"
-        echo "Mounting DMG at $MOUNT_POINT"
-        /usr/bin/hdiutil attach -nobrowse -quiet -mountpoint "$MOUNT_POINT" "$DMG"
+        detach_tokenstep_mounts() {
+          /sbin/mount | while IFS= read -r line; do
+            case "$line" in
+              *" on /Volumes/TokenStep"*|*" on "*tokenstep-preflight-*|*" on "*tokenstep-update.*)
+                MP="${line#* on }"
+                MP="${MP%% (*}"
+                echo "Detaching stale mount: $MP"
+                /usr/bin/hdiutil detach "$MP" -force -quiet || true
+                ;;
+            esac
+          done
+        }
+
+        detach_tokenstep_mounts
+
+        MOUNT_ROOT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/tokenstep-update-root.XXXXXX")"
+        echo "Mounting DMG under $MOUNT_ROOT"
+        ATTACH_OUTPUT="$(/usr/bin/hdiutil attach -nobrowse -readonly -mountroot "$MOUNT_ROOT" "$DMG" 2>&1)" || {
+          echo "hdiutil attach failed"
+          echo "$ATTACH_OUTPUT"
+          exit 1
+        }
+        echo "$ATTACH_OUTPUT"
+        MOUNT_POINT="$(printf '%s\n' "$ATTACH_OUTPUT" | /usr/bin/awk '/\\// { mount=$NF } END { print mount }')"
+        if [ -z "$MOUNT_POINT" ] || [ ! -d "$MOUNT_POINT" ]; then
+          echo "Mounted volume path not found"
+          exit 1
+        }
+        echo "Mounted at $MOUNT_POINT"
 
         SRC="$(/usr/bin/find "$MOUNT_POINT" -name "$APP_NAME" -type d -print -quit)"
         if [ -z "$SRC" ]; then
