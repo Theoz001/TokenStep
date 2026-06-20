@@ -21,12 +21,23 @@ struct TokenStepApp: App {
             PopoverPanelView()
                 .environmentObject(appState)
         } label: {
-            StatusBarLabelView(
-                tokens: appState.today.totalTokens,
-                lap: appState.todayLap,
-                refreshing: appState.isRefreshing,
-                theme: appState.settings.theme
-            )
+            Group {
+                if appState.shouldShowTokenIsland {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityHidden(true)
+                } else {
+                    StatusBarLabelView(
+                        tokens: appState.today.totalTokens,
+                        lap: appState.todayLap,
+                        refreshing: appState.isRefreshing,
+                        theme: appState.settings.theme
+                    )
+                }
+            }
+            .onAppear {
+                TokenIslandWindowPresenter.shared.bind(appState: appState)
+            }
         }
         .menuBarExtraStyle(.window)
 
