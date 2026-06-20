@@ -53,11 +53,19 @@ struct TokenIslandRingView: View {
     var theme: TokenStepTheme
 
     var body: some View {
-        HStack(spacing: 7) {
-            Image(nsImage: StatusBarIconRenderer.progressRing(progress: lap.currentLapProgress, lap: lap.currentLap, refreshing: refreshing))
+        HStack(spacing: 5) {
+            Image(nsImage: StatusBarIconRenderer.progressRing(
+                progress: lap.currentLapProgress,
+                lap: lap.currentLap,
+                refreshing: refreshing,
+                size: 16,
+                radius: 6.2,
+                lineWidth: 2.15,
+                showsCenterDot: false
+            ))
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 19, height: 19)
+                .frame(width: 15, height: 15)
                 .accessibilityLabel("\(lap.lapTitle) \(lap.lapPercentText)")
                 .id(theme.id)
 
@@ -67,12 +75,9 @@ struct TokenIslandRingView: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.74)
-
-            Circle()
-                .fill(refreshing ? Color.white.opacity(0.54) : lap.color)
-                .frame(width: 5, height: 5)
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 7)
+        .padding(.trailing, 8)
         .frame(width: TokenIslandWindowPresenter.collapsedSize.width, height: TokenIslandWindowPresenter.collapsedSize.height)
         .background(Color.black)
         .clipShape(Capsule())

@@ -6,7 +6,7 @@ import SwiftUI
 final class TokenIslandWindowPresenter {
     static let shared = TokenIslandWindowPresenter()
 
-    static let collapsedSize = NSSize(width: 118, height: 24)
+    static let collapsedSize = NSSize(width: 96, height: 24)
     static let expandedSize = NSSize(width: 412, height: 680)
 
     private weak var appState: AppState?
