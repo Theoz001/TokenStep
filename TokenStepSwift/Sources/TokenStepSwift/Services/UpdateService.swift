@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 struct AvailableUpdate: Identifiable, Equatable {
@@ -100,6 +101,7 @@ enum UpdateService {
     }
 
     private static func preflightDMG(_ dmgURL: URL, requireVerified: Bool) throws {
+        detachStaleTokenStepMounts()
         let mountPoint = FileManager.default.temporaryDirectory
             .appendingPathComponent("tokenstep-preflight-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
@@ -149,6 +151,14 @@ enum UpdateService {
             requireVerified: requireVerified,
             scriptPath: scriptURL.path
         )
+        let launchLog = """
+        TokenStep update launcher prepared at \(Date())
+        Expected version: \(version)
+        DMG: \(dmgURL.path)
+        Script: \(scriptURL.path)
+
+        """
+        try launchLog.write(to: logURL, atomically: true, encoding: .utf8)
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
 
@@ -159,8 +169,18 @@ enum UpdateService {
         process.standardError = nil
         do {
             try process.run()
+            exitCurrentAppAfterLaunchingInstaller()
         } catch {
             throw UpdateError.installFailed
+        }
+    }
+
+    private static func exitCurrentAppAfterLaunchingInstaller() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            NSApp.terminate(nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            Darwin.exit(0)
         }
     }
 
@@ -221,14 +241,12 @@ enum UpdateService {
 
         detach_tokenstep_mounts() {
           /sbin/mount | while IFS= read -r line; do
-            case "$line" in
-              *" on /Volumes/TokenStep"*|*" on "*tokenstep-preflight-*|*" on "*tokenstep-update.*)
-                MP="${line#* on }"
-                MP="${MP%% (*}"
-                echo "Detaching stale mount: $MP"
-                /usr/bin/hdiutil detach "$MP" -force -quiet || true
-                ;;
-            esac
+            if [[ "$line" == *" on /Volumes/TokenStep"* || "$line" == *tokenstep-preflight-* || "$line" == *tokenstep-update.* || "$line" == *tokenstep-update-root.* ]]; then
+              MP="${line#* on }"
+              MP="${MP%% (*}"
+              echo "Detaching stale mount: $MP"
+              /usr/bin/hdiutil detach "$MP" -force -quiet || true
+            fi
           done
         }
 
@@ -314,6 +332,13 @@ enum UpdateService {
         /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
         echo "Opening updated app"
         /usr/bin/open -n "$DEST"
+        for _ in {1..25}; do
+          if /usr/bin/pgrep -x "$EXECUTABLE_NAME" >/dev/null 2>&1; then
+            echo "Updated app relaunched"
+            break
+          fi
+          /bin/sleep 0.2
+        done
         echo "TokenStep update installer finished at $(date)"
         """
     }
@@ -337,6 +362,26 @@ enum UpdateService {
             throw UpdateError.installFailed
         }
         return output.fileHandleForReading.readDataToEndOfFile()
+    }
+
+    private static func detachStaleTokenStepMounts() {
+        guard let output = try? runProcess("/sbin/mount", arguments: []),
+              let text = String(data: output, encoding: .utf8)
+        else { return }
+
+        for line in text.split(separator: "\n").map(String.init) {
+            guard line.contains(" on /Volumes/TokenStep")
+                    || line.contains("tokenstep-preflight-")
+                    || line.contains("tokenstep-update.")
+                    || line.contains("tokenstep-update-root.")
+            else { continue }
+
+            guard let range = line.range(of: " on ") else { continue }
+            let afterOn = line[range.upperBound...]
+            guard let endRange = afterOn.range(of: " (") else { continue }
+            let mountPoint = String(afterOn[..<endRange.lowerBound])
+            _ = try? runProcess("/usr/bin/hdiutil", arguments: ["detach", mountPoint, "-force", "-quiet"])
+        }
     }
 }
 
