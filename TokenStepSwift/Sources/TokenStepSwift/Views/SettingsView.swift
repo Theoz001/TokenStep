@@ -3,38 +3,69 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 18),
-        GridItem(.flexible(), spacing: 18)
-    ]
+    @Environment(\.isScreenshotRendering) private var isScreenshotRendering
+    var captureMode = false
 
     var body: some View {
+        Group {
+            if captureMode {
+                captureBody
+            } else {
+                windowBody
+            }
+        }
+        .id(appState.settings.theme.id)
+    }
+
+    private var windowBody: some View {
         ZStack {
             TokenStepBackdrop()
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 22) {
-                    header
-
-                    LazyVGrid(columns: columns, spacing: 18) {
-                        dailyGoalCard
-                        themeCard
-                        refreshCard
-                        updateCard
-                        autostartCard
-                        privacyCard
-                    }
-
-                    footer
-                }
-                .padding(.top, 36)
-                .padding(.horizontal, 34)
-                .padding(.bottom, 24)
+                settingsContent
+                    .padding(.top, 36)
+                    .padding(.horizontal, 34)
+                    .padding(.bottom, 24)
             }
         }
         .frame(width: 920, height: 760)
-        .id(appState.settings.theme.id)
+    }
+
+    private var captureBody: some View {
+        ZStack {
+            TokenStepBackdrop()
+            settingsContent
+                .padding(.top, 36)
+                .padding(.horizontal, 34)
+                .padding(.bottom, 24)
+        }
+        .frame(width: 920)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var settingsContent: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            header
+            cardGrid
+            footer
+        }
+    }
+
+    private var cardGrid: some View {
+        VStack(spacing: 18) {
+            HStack(alignment: .top, spacing: 18) {
+                dailyGoalCard
+                themeCard
+            }
+            HStack(alignment: .top, spacing: 18) {
+                refreshCard
+                updateCard
+            }
+            HStack(alignment: .top, spacing: 18) {
+                autostartCard
+                privacyCard
+            }
+        }
     }
 
     private var header: some View {
@@ -64,6 +95,41 @@ struct SettingsView: View {
             .padding(.vertical, 10)
             .background(Color.tokenMint.opacity(0.22), in: Capsule())
             .overlay(Capsule().stroke(Color.tokenGreen.opacity(0.12)))
+
+            if !isScreenshotRendering && !captureMode {
+                ScreenshotMenuButton(
+                    copyTitle: "复制设置截图",
+                    saveTitle: "保存设置 PNG",
+                    help: "截取设置页",
+                    copyAction: copySettingsScreenshot,
+                    saveAction: saveSettingsScreenshot
+                )
+            }
+        }
+    }
+
+    private var settingsScreenshot: some View {
+        SettingsView(captureMode: true)
+            .environmentObject(appState)
+            .environment(\.isScreenshotRendering, true)
+    }
+
+    private func copySettingsScreenshot() {
+        do {
+            try ScreenshotExporter.copy(settingsScreenshot)
+        } catch {
+            appState.lastError = error.localizedDescription
+        }
+    }
+
+    private func saveSettingsScreenshot() {
+        do {
+            try ScreenshotExporter.save(
+                settingsScreenshot,
+                suggestedFileName: ScreenshotExporter.suggestedFileName(prefix: "settings")
+            )
+        } catch {
+            appState.lastError = error.localizedDescription
         }
     }
 

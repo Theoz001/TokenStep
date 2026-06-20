@@ -6,7 +6,7 @@
 
 下载最新版 DMG，打开后把 `TokenStep.app` 拖进「应用程序」即可使用：
 
-[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.12.dmg)
+[下载 TokenStep 最新版](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.13.dmg)
 
 也可以从 Release 页面查看所有版本：
 
@@ -46,7 +46,7 @@ TokenStep 只读取 token 用量元数据，例如日期、模型、客户端名
 
 ## 安装方式
 
-1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.12.dmg)。
+1. 下载 [TokenStep 最新版 DMG](https://github.com/Backtthefuture/TokenStep/releases/latest/download/TokenStep-0.1.13.dmg)。
 2. 打开 DMG。
 3. 把 `TokenStep.app` 拖到「应用程序」。
 4. 启动 TokenStep。
@@ -64,6 +64,16 @@ TokenStep 是 local-first 的本地工具。
 - 「消耗金额」只是本地粗略估算，不等于真实账单。
 
 完整说明见 [docs/PRIVACY.md](docs/PRIVACY.md)。
+
+## 下载统计
+
+查看 GitHub Release 下载数：
+
+```bash
+python3 script/github_download_stats.py
+```
+
+统计方案见 [docs/ANALYTICS.md](docs/ANALYTICS.md)。
 
 ## 本地构建
 
@@ -95,7 +105,7 @@ TokenStepSwift/dist/TokenStep.app
 Developer ID 签名：
 
 ```bash
-TOKENSTEP_VERSION=0.1.12 \
+TOKENSTEP_VERSION=0.1.13 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 ./script/package_release.sh
 ```
@@ -103,7 +113,7 @@ CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 签名 + Apple 公证：
 
 ```bash
-TOKENSTEP_VERSION=0.1.12 \
+TOKENSTEP_VERSION=0.1.13 \
 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 TOKENSTEP_NOTARY_PROFILE="tokenstep-notary" \
 ./script/package_release.sh --notarize
