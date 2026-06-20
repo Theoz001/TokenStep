@@ -207,7 +207,6 @@ enum TokenStepLocalization {
             "自动安装失败，请稍后重试，或手动把 TokenStep 拖到 Applications。": "Automatic install failed. Try again later, or drag TokenStep to Applications manually.",
             "只统计 token 数量": "Only counts token usage",
             "用于计算今日 Token 消耗、历史趋势和消耗金额。": "Used for daily token usage, trends, and estimated cost.",
-            "不上传代码或对话": "Does not upload code or chats",
             "所有数据文件都保留在这台 Mac 上。": "All data files stay on this Mac.",
             "消耗金额仅供参考": "Cost is only an estimate",
             "按本地价格表粗略估算，不等于真实账单。": "Estimated locally and may not match your real bill.",
