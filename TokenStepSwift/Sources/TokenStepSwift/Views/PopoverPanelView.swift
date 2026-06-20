@@ -33,7 +33,7 @@ struct PopoverPanelView: View {
                 Text("TokenStep")
                     .font(.system(size: 24, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.tokenInk)
-                Text("每日 Token 消耗追踪")
+                Text(L("每日 Token 消耗追踪"))
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -42,7 +42,7 @@ struct PopoverPanelView: View {
                 Circle()
                     .fill(appState.isRefreshing ? Color.secondary.opacity(0.68) : Color.tokenGreen)
                     .frame(width: 7, height: 7)
-                Text(appState.isRefreshing ? "同步中" : "已同步")
+                Text(appState.isRefreshing ? L("同步中") : L("已同步"))
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(Color.tokenInk.opacity(0.72))
             }
@@ -53,9 +53,9 @@ struct PopoverPanelView: View {
 
             if !isScreenshotRendering {
                 ScreenshotMenuButton(
-                    copyTitle: "复制浮层截图",
-                    saveTitle: "保存浮层 PNG",
-                    help: "截取浮层",
+                    copyTitle: L("复制浮层截图"),
+                    saveTitle: L("保存浮层 PNG"),
+                    help: L("截取浮层"),
                     copyAction: copyPopoverScreenshot,
                     saveAction: savePopoverScreenshot
                 )
@@ -68,7 +68,7 @@ struct PopoverPanelView: View {
         return TokenCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Text("今日 Token 消耗")
+                    Text(L("今日 Token 消耗"))
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
                     Spacer()
@@ -86,7 +86,7 @@ struct PopoverPanelView: View {
                                 .foregroundStyle(Color.tokenInk)
                                 .minimumScaleFactor(0.52)
                                 .lineLimit(1)
-                            Text("/ \(TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)) 每圈")
+                            Text(LFormat("/ %@ 每圈", TokenStepFormat.tokens(appState.settings.dailyGoalTokens, compact: true)))
                                 .font(.callout.weight(.bold))
                                 .foregroundStyle(.secondary)
                         }
@@ -107,8 +107,8 @@ struct PopoverPanelView: View {
                             .foregroundStyle(.secondary)
 
                         VStack(alignment: .leading, spacing: 8) {
-                            MetricPill(label: "消耗金额", value: TokenStepFormat.money(appState.today.cost))
-                            MetricPill(label: "活跃", value: "\(appState.snapshot.totals.activeDays) 天")
+                            MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
+                            MetricPill(label: L("活跃"), value: localizedDays(appState.snapshot.totals.activeDays))
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,11 +121,11 @@ struct PopoverPanelView: View {
         TokenCard {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("最近 30 天")
+                    Text(L("最近 30 天"))
                         .font(.headline.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
                     Spacer()
-                    Text("细线是每日目标")
+                    Text(L("细线是每日目标"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
@@ -138,11 +138,11 @@ struct PopoverPanelView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Label("本地统计", systemImage: "checkmark.shield.fill")
+                Label(L("本地统计"), systemImage: "checkmark.shield.fill")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(appState.settings.refreshIntervalSeconds == 0 ? "手动刷新" : "刷新 \(TokenStepFormat.intervalLabel(appState.settings.refreshIntervalSeconds))")
+                Text(appState.settings.refreshIntervalSeconds == 0 ? L("手动刷新") : LFormat("刷新 %@", TokenStepFormat.intervalLabel(appState.settings.refreshIntervalSeconds)))
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
             }
@@ -151,7 +151,7 @@ struct PopoverPanelView: View {
                 Button {
                     MainWindowPresenter.shared.show(appState: appState)
                 } label: {
-                    Label("打开仪表盘", systemImage: "arrow.up.right")
+                    Label(L("打开仪表盘"), systemImage: "arrow.up.right")
                         .font(.system(size: 16, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -160,22 +160,26 @@ struct PopoverPanelView: View {
                         .shadow(color: Color.tokenGreenDark.opacity(0.14), radius: 10, x: 0, y: 6)
                 }
                 .buttonStyle(.plain)
-                .help("打开仪表盘")
+                .help(L("打开仪表盘"))
 
-                PopoverActionButton(title: "刷新", symbol: "arrow.clockwise") {
+                PopoverActionButton(title: L("刷新"), symbol: "arrow.clockwise") {
                     appState.refresh()
                 }
                 .disabled(appState.isRefreshing)
 
-                PopoverActionButton(title: "设置", symbol: "gearshape") {
+                PopoverActionButton(title: L("设置"), symbol: "gearshape") {
                     SettingsWindowPresenter.shared.show(appState: appState)
                 }
 
-                PopoverActionButton(title: "退出", symbol: "power") {
+                PopoverActionButton(title: L("退出"), symbol: "power") {
                     NSApplication.shared.terminate(nil)
                 }
             }
         }
+    }
+
+    private func localizedDays(_ count: Int) -> String {
+        TokenStepLocalization.language == .en ? "\(count)d" : "\(count) 天"
     }
 
     private var popoverScreenshot: some View {
@@ -243,10 +247,10 @@ private struct UpdateNoticeCard: View {
                 .background(Color.tokenMint.opacity(0.22), in: Circle())
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("发现新版本 \(update.version)")
+                Text(LFormat("发现新版本 %@", update.version))
                     .font(.callout.weight(.heavy))
                     .foregroundStyle(Color.tokenInk)
-                Text(update.noteLines.first ?? "内存占用优化与稳定性改进")
+                Text(update.noteLines.first ?? L("内存占用优化与稳定性改进"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -257,7 +261,7 @@ private struct UpdateNoticeCard: View {
             Button {
                 appState.showUpdateDetails()
             } label: {
-                Text("立即更新")
+                Text(L("立即更新"))
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 12)
@@ -269,7 +273,7 @@ private struct UpdateNoticeCard: View {
             Button {
                 appState.postponeUpdateNotice()
             } label: {
-                Text("稍后")
+                Text(L("稍后"))
                     .font(.caption.weight(.heavy))
                     .foregroundStyle(Color.tokenInk.opacity(0.64))
                     .padding(.horizontal, 10)

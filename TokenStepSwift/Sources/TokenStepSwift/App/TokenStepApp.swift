@@ -47,17 +47,17 @@ struct TokenStepApp: App {
         }
         .commands {
             CommandMenu("TokenStep") {
-                Button("刷新") {
+                Button(L("刷新")) {
                     appState.refresh()
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 
-                Button("打开 TokenStep") {
+                Button(L("打开 TokenStep")) {
                     MainWindowPresenter.shared.show(appState: appState)
                 }
                 .keyboardShortcut("o", modifiers: [.command])
 
-                Button("设置") {
+                Button(L("设置")) {
                     SettingsWindowPresenter.shared.show(appState: appState)
                 }
                 .keyboardShortcut(",", modifiers: [.command])

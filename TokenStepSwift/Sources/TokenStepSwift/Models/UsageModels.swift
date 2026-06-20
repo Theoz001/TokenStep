@@ -92,20 +92,77 @@ enum TokenIslandDisplayPlacement: String, CaseIterable, Identifiable, Codable {
 
     var title: String {
         switch self {
-        case .automatic: return "自动"
-        case .notchLeft: return "刘海左侧"
-        case .notchRight: return "刘海右侧"
-        case .menuBar: return "菜单栏"
+        case .automatic: return L("自动")
+        case .notchLeft: return L("刘海左侧")
+        case .notchRight: return L("刘海右侧")
+        case .menuBar: return L("菜单栏")
         }
     }
 
     var shortTitle: String {
         switch self {
-        case .automatic: return "自动"
-        case .notchLeft: return "左侧"
-        case .notchRight: return "右侧"
-        case .menuBar: return "菜单栏"
+        case .automatic: return L("自动")
+        case .notchLeft: return L("左侧")
+        case .notchRight: return L("右侧")
+        case .menuBar: return L("菜单栏")
         }
+    }
+}
+
+enum TokenStepLanguage: String, CaseIterable, Identifiable, Codable {
+    case system
+    case zhHans = "zh-Hans"
+    case en
+    case zhHant = "zh-Hant"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return L("跟随系统")
+        case .zhHans: return "简体中文"
+        case .en: return "English"
+        case .zhHant: return "繁體中文"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .system: return L("自动匹配 macOS")
+        case .zhHans: return "简体"
+        case .en: return "English"
+        case .zhHant: return "繁體"
+        }
+    }
+
+    var localeIdentifier: String {
+        switch resolved {
+        case .system:
+            return "zh-Hans"
+        case .zhHans:
+            return "zh-Hans"
+        case .en:
+            return "en"
+        case .zhHant:
+            return "zh-Hant"
+        }
+    }
+
+    var resolved: TokenStepLanguage {
+        guard self == .system else { return self }
+        for identifier in Locale.preferredLanguages {
+            let lowercased = identifier.lowercased()
+            if lowercased.hasPrefix("zh-hant") || lowercased.hasPrefix("zh-tw") || lowercased.hasPrefix("zh-hk") {
+                return .zhHant
+            }
+            if lowercased.hasPrefix("en") {
+                return .en
+            }
+            if lowercased.hasPrefix("zh") {
+                return .zhHans
+            }
+        }
+        return .zhHans
     }
 }
 
@@ -119,6 +176,7 @@ struct TokenStepSettings: Codable {
     var requireVerifiedUpdates: Bool
     var tokenIslandEnabled: Bool
     var tokenIslandPlacement: TokenIslandDisplayPlacement
+    var language: TokenStepLanguage
     var skippedUpdateVersion: String?
 
     enum CodingKeys: String, CodingKey {
@@ -131,6 +189,7 @@ struct TokenStepSettings: Codable {
         case requireVerifiedUpdates = "require_verified_updates"
         case tokenIslandEnabled = "token_island_enabled"
         case tokenIslandPlacement = "token_island_placement"
+        case language
         case skippedUpdateVersion = "skipped_update_version"
     }
 
@@ -144,6 +203,7 @@ struct TokenStepSettings: Codable {
         requireVerifiedUpdates: true,
         tokenIslandEnabled: true,
         tokenIslandPlacement: .automatic,
+        language: .system,
         skippedUpdateVersion: nil
     )
 
@@ -157,6 +217,7 @@ struct TokenStepSettings: Codable {
         requireVerifiedUpdates: Bool,
         tokenIslandEnabled: Bool,
         tokenIslandPlacement: TokenIslandDisplayPlacement,
+        language: TokenStepLanguage,
         skippedUpdateVersion: String?
     ) {
         self.dailyGoalTokens = dailyGoalTokens
@@ -168,6 +229,7 @@ struct TokenStepSettings: Codable {
         self.requireVerifiedUpdates = requireVerifiedUpdates
         self.tokenIslandEnabled = tokenIslandEnabled
         self.tokenIslandPlacement = tokenIslandPlacement
+        self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
     }
 
@@ -191,6 +253,7 @@ struct TokenStepSettings: Codable {
         } else {
             tokenIslandPlacement = defaults.tokenIslandPlacement
         }
+        language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
     }
 }

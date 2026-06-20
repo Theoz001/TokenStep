@@ -18,9 +18,9 @@ enum TokenIslandDisplayDetector {
 
     static var fallbackReason: String {
         guard primaryScreen != nil else {
-            return "未检测到可用屏幕"
+            return L("未检测到可用屏幕")
         }
-        return "当前主屏无刘海，已回到菜单栏"
+        return L("当前主屏无刘海，已回到菜单栏")
     }
 
     static func isAvailable(for placement: TokenIslandDisplayPlacement, size: NSSize) -> Bool {

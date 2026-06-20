@@ -10,7 +10,7 @@ final class AppState: ObservableObject {
     @Published private(set) var isCheckingForUpdates = false
     @Published private(set) var isDownloadingUpdate = false
     @Published private(set) var updateDownloadProgress = 0.0
-    @Published private(set) var updateInstallStatus = "准备更新"
+    @Published private(set) var updateInstallStatus = L("准备更新")
     @Published private(set) var availableUpdate: AvailableUpdate?
     @Published private(set) var lastUpdateCheckAt: Date?
     @Published private(set) var updateDownloadedURL: URL?
@@ -69,28 +69,29 @@ final class AppState: ObservableObject {
     var tokenIslandStatus: String {
         switch settings.tokenIslandPlacement {
         case .menuBar:
-            return "菜单栏模式"
+            return L("菜单栏模式")
         case .automatic:
-            return shouldShowTokenIsland ? "自动：刘海旁" : "自动：菜单栏"
+            return shouldShowTokenIsland ? L("自动：刘海旁") : L("自动：菜单栏")
         case .notchLeft:
-            return shouldShowTokenIsland ? "刘海左侧" : "菜单栏模式"
+            return shouldShowTokenIsland ? L("刘海左侧") : L("菜单栏模式")
         case .notchRight:
-            return shouldShowTokenIsland ? "刘海右侧" : "菜单栏模式"
+            return shouldShowTokenIsland ? L("刘海右侧") : L("菜单栏模式")
         }
     }
 
     var tokenIslandStatusDetail: String {
         if shouldShowTokenIsland {
-            return "鼠标移入后展开浮层"
+            return L("鼠标移入后展开浮层")
         }
         if settings.tokenIslandPlacement == .menuBar {
-            return "仅使用右上角菜单栏入口"
+            return L("仅使用右上角菜单栏入口")
         }
         return TokenIslandDisplayDetector.fallbackReason
     }
 
     func load() {
         let loadedSettings = DataService.loadSettings()
+        TokenStepLocalization.apply(loadedSettings.language)
         TokenStepThemeRuntime.apply(loadedSettings.theme)
         settings = loadedSettings
         snapshot = (try? DataService.loadSnapshot()) ?? .empty
@@ -137,6 +138,13 @@ final class AppState: ObservableObject {
         TokenStepThemeRuntime.apply(theme)
         settings.theme = theme
         saveSettingsAndReload()
+    }
+
+    func setLanguage(_ language: TokenStepLanguage) {
+        TokenStepLocalization.apply(language)
+        settings.language = language
+        saveSettingsAndReload()
+        updateInstallStatus = L("准备更新")
     }
 
     func setTokenIslandEnabled(_ enabled: Bool) {
@@ -216,7 +224,7 @@ final class AppState: ObservableObject {
         guard let update = availableUpdate, !isDownloadingUpdate else { return }
         isDownloadingUpdate = true
         updateDownloadProgress = 0
-        updateInstallStatus = "正在下载"
+        updateInstallStatus = L("正在下载")
         updateDownloadedURL = nil
         lastError = nil
         Task {
@@ -229,10 +237,10 @@ final class AppState: ObservableObject {
                 }
                 updateDownloadedURL = url
                 updateDownloadProgress = 1
-                updateInstallStatus = "正在安装并重启"
+                updateInstallStatus = L("正在安装并重启")
             } catch {
                 lastError = error.localizedDescription
-                updateInstallStatus = "更新失败"
+                updateInstallStatus = L("更新失败")
                 isDownloadingUpdate = false
             }
         }
@@ -253,6 +261,7 @@ final class AppState: ObservableObject {
         do {
             try DataService.saveSettings(settings)
             let loadedSettings = DataService.loadSettings()
+            TokenStepLocalization.apply(loadedSettings.language)
             TokenStepThemeRuntime.apply(loadedSettings.theme)
             settings = loadedSettings
         } catch {

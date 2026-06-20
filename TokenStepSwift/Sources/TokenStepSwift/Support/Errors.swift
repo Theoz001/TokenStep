@@ -7,9 +7,9 @@ enum TokenStepError: LocalizedError {
         switch self {
         case let .collectorFailed(status, message):
             if message.isEmpty {
-                return "采集脚本退出码 \(status)"
+                return LFormat("采集脚本退出码 %d", status)
             }
-            return "采集脚本退出码 \(status)：\(message)"
+            return LFormat("采集脚本退出码 %d：%@", status, message)
         }
     }
 }

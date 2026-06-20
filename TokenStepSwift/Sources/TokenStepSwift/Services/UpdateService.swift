@@ -192,7 +192,9 @@ enum UpdateService {
         requireVerified: Bool,
         scriptPath: String
     ) -> String {
-        """
+        let failureTitle = L("TokenStep 自动更新失败")
+        let failureBody = L("请手动把 DMG 里的 TokenStep 拖到 Applications。")
+        return """
         #!/bin/bash
         set -euo pipefail
 
@@ -205,6 +207,8 @@ enum UpdateService {
         LOG=\(shellQuote(logPath))
         REQUIRE_VERIFIED="\(requireVerified ? "1" : "0")"
         SCRIPT_PATH=\(shellQuote(scriptPath))
+        FAILURE_TITLE=\(shellQuote(failureTitle))
+        FAILURE_BODY=\(shellQuote(failureBody))
         MOUNT_POINT=""
         MOUNT_ROOT=""
         BACKUP=""
@@ -232,7 +236,7 @@ enum UpdateService {
             if [ -n "$BACKUP" ] && [ -d "$BACKUP" ] && [ ! -d "$DEST" ]; then
               /bin/mv "$BACKUP" "$DEST" || true
             fi
-            /usr/bin/osascript -e 'display notification "请手动把 DMG 里的 TokenStep 拖到 Applications。" with title "TokenStep 自动更新失败"' || true
+            /usr/bin/osascript -e "display notification \\"$FAILURE_BODY\\" with title \\"$FAILURE_TITLE\\"" || true
           fi
           cleanup
           exit "$STATUS"
@@ -395,15 +399,15 @@ enum UpdateError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .checkFailed:
-            return "检查更新失败，请稍后再试。"
+            return L("检查更新失败，请稍后再试。")
         case .missingDMG:
-            return "新版本没有可下载的 DMG。"
+            return L("新版本没有可下载的 DMG。")
         case .downloadFailed:
-            return "下载更新失败，请稍后再试。"
+            return L("下载更新失败，请稍后再试。")
         case .verificationFailed:
-            return "新版本未通过签名或公证验证，已停止安装。"
+            return L("新版本未通过签名或公证验证，已停止安装。")
         case .installFailed:
-            return "自动安装失败，请稍后重试，或手动把 TokenStep 拖到 Applications。"
+            return L("自动安装失败，请稍后重试，或手动把 TokenStep 拖到 Applications。")
         }
     }
 }
