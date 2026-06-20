@@ -329,6 +329,10 @@ final class AppState: ObservableObject {
     }
 
     private func refreshIfSnapshotIsStale() {
+        if snapshot.daily.contains(where: { $0.totalTokens > 0 && $0.models.isEmpty }) {
+            refresh()
+            return
+        }
         guard settings.refreshIntervalSeconds > 0 else {
             if snapshot.generatedAt == nil {
                 refresh()
