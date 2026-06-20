@@ -186,7 +186,6 @@ final class AppState: ObservableObject {
                 updateDownloadedURL = url
                 updateDownloadProgress = 1
                 updateInstallStatus = "正在安装并重启"
-                NSApp.terminate(nil)
             } catch {
                 lastError = error.localizedDescription
                 updateInstallStatus = "更新失败"

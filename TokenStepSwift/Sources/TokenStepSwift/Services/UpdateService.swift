@@ -19,10 +19,17 @@ struct AvailableUpdate: Identifiable, Equatable {
     var noteLines: [String] {
         let cleaned = notes
             .split(separator: "\n")
-            .map { line in
-                line.trimmingCharacters(in: CharacterSet(charactersIn: "-• ").union(.whitespacesAndNewlines))
+            .compactMap { line -> String? in
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                guard !trimmed.hasPrefix("#") else { return nil }
+                guard !trimmed.lowercased().hasPrefix("sha256") else { return nil }
+                let cleaned = trimmed
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "-•* ").union(.whitespacesAndNewlines))
+                    .replacingOccurrences(of: "`", with: "")
+                    .replacingOccurrences(of: "**", with: "")
+                return cleaned.isEmpty ? nil : cleaned
             }
-            .filter { !$0.isEmpty && !$0.lowercased().hasPrefix("sha256") }
         return Array(cleaned.prefix(upTo: min(4, cleaned.count))).map { String($0) }
     }
 }
@@ -88,7 +95,7 @@ enum UpdateService {
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.moveItem(at: temporaryURL, to: destination)
         try preflightDMG(destination, requireVerified: requireVerified)
-        try launchInstaller(for: destination, requireVerified: requireVerified)
+        try launchInstaller(for: destination, version: update.version, requireVerified: requireVerified)
         return destination
     }
 
@@ -128,7 +135,7 @@ enum UpdateService {
             && (try? runProcess("/usr/bin/codesign", arguments: ["--verify", "--deep", "--strict", appURL.path])) != nil
     }
 
-    private static func launchInstaller(for dmgURL: URL, requireVerified: Bool) throws {
+    private static func launchInstaller(for dmgURL: URL, version: String, requireVerified: Bool) throws {
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tokenstep-install-\(UUID().uuidString)")
             .appendingPathExtension("sh")
@@ -136,6 +143,7 @@ enum UpdateService {
         let currentPID = ProcessInfo.processInfo.processIdentifier
         let script = installerScript(
             dmgPath: dmgURL.path,
+            version: version,
             currentPID: currentPID,
             logPath: logURL.path,
             requireVerified: requireVerified,
@@ -158,6 +166,7 @@ enum UpdateService {
 
     private static func installerScript(
         dmgPath: String,
+        version: String,
         currentPID: Int32,
         logPath: String,
         requireVerified: Bool,
@@ -170,6 +179,8 @@ enum UpdateService {
         DMG=\(shellQuote(dmgPath))
         DEST="/Applications/TokenStep.app"
         APP_NAME="TokenStep.app"
+        EXECUTABLE_NAME="TokenStepSwift"
+        EXPECTED_VERSION=\(shellQuote(version))
         CURRENT_PID="\(currentPID)"
         LOG=\(shellQuote(logPath))
         REQUIRE_VERIFIED="\(requireVerified ? "1" : "0")"
@@ -180,6 +191,9 @@ enum UpdateService {
         mkdir -p "$(dirname "$LOG")"
         exec >>"$LOG" 2>&1
         echo "TokenStep update installer started at $(date)"
+        echo "Expected version: $EXPECTED_VERSION"
+        echo "DMG: $DMG"
+        echo "Destination: $DEST"
 
         cleanup() {
           if [ -n "$MOUNT_POINT" ] && [ -d "$MOUNT_POINT" ]; then
@@ -202,11 +216,8 @@ enum UpdateService {
         }
         trap finish EXIT
 
-        while /bin/kill -0 "$CURRENT_PID" 2>/dev/null; do
-          /bin/sleep 0.2
-        done
-
         MOUNT_POINT="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/tokenstep-update.XXXXXX")"
+        echo "Mounting DMG at $MOUNT_POINT"
         /usr/bin/hdiutil attach -nobrowse -quiet -mountpoint "$MOUNT_POINT" "$DMG"
 
         SRC="$(/usr/bin/find "$MOUNT_POINT" -name "$APP_NAME" -type d -print -quit)"
@@ -214,17 +225,43 @@ enum UpdateService {
           echo "TokenStep.app not found in DMG"
           exit 1
         fi
+        echo "Found source app: $SRC"
 
         if [ "$REQUIRE_VERIFIED" = "1" ]; then
+          echo "Verifying source app"
           /usr/sbin/spctl --assess --type execute "$SRC"
           /usr/bin/codesign --verify --deep --strict "$SRC"
         fi
 
+        SRC_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$SRC/Contents/Info.plist" 2>/dev/null || true)"
+        echo "Source version: $SRC_VERSION"
+        if [ "$SRC_VERSION" != "$EXPECTED_VERSION" ]; then
+          echo "Source version mismatch: expected $EXPECTED_VERSION, got $SRC_VERSION"
+          exit 1
+        fi
+
+        echo "Stopping old TokenStep process"
+        /bin/kill -TERM "$CURRENT_PID" 2>/dev/null || true
+        /usr/bin/pkill -x "$EXECUTABLE_NAME" 2>/dev/null || true
+        for _ in {1..50}; do
+          if ! /usr/bin/pgrep -x "$EXECUTABLE_NAME" >/dev/null 2>&1; then
+            break
+          fi
+          /bin/sleep 0.2
+        done
+        if /usr/bin/pgrep -x "$EXECUTABLE_NAME" >/dev/null 2>&1; then
+          echo "Force stopping old TokenStep process"
+          /usr/bin/pkill -9 -x "$EXECUTABLE_NAME" 2>/dev/null || true
+          /bin/sleep 0.4
+        fi
+
         BACKUP="/Applications/TokenStep.app.previous.$(/bin/date +%s)"
         if [ -d "$DEST" ]; then
+          echo "Backing up existing app to $BACKUP"
           /bin/mv "$DEST" "$BACKUP"
         fi
 
+        echo "Copying new app into Applications"
         if ! /usr/bin/ditto "$SRC" "$DEST"; then
           /bin/rm -rf "$DEST"
           if [ -d "$BACKUP" ]; then
@@ -238,8 +275,16 @@ enum UpdateService {
           /bin/rm -rf "$BACKUP"
         fi
 
+        INSTALLED_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$DEST/Contents/Info.plist" 2>/dev/null || true)"
+        echo "Installed version: $INSTALLED_VERSION"
+        if [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
+          echo "Installed version mismatch: expected $EXPECTED_VERSION, got $INSTALLED_VERSION"
+          exit 1
+        fi
+
         /usr/bin/xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
-        /usr/bin/open "$DEST"
+        echo "Opening updated app"
+        /usr/bin/open -n "$DEST"
         echo "TokenStep update installer finished at $(date)"
         """
     }
