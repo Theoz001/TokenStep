@@ -14,7 +14,7 @@ struct SettingsView: View {
                 windowBody
             }
         }
-        .id(appState.settings.theme.id)
+        .id(appState.appearanceID)
     }
 
     private var windowBody: some View {

@@ -92,6 +92,10 @@ final class AppState: ObservableObject {
         return TokenIslandDisplayDetector.fallbackReason
     }
 
+    var appearanceID: String {
+        "\(settings.theme.id)-\(settings.language.resolved.id)"
+    }
+
     func load() {
         let loadedSettings = DataService.loadSettings()
         TokenStepLocalization.apply(loadedSettings.language)
