@@ -58,11 +58,14 @@ struct SettingsView: View {
                 themeCard
             }
             HStack(alignment: .top, spacing: 18) {
+                displayCard
                 refreshCard
-                updateCard
             }
             HStack(alignment: .top, spacing: 18) {
                 autostartCard
+                updateCard
+            }
+            HStack(alignment: .top, spacing: 18) {
                 privacyCard
             }
         }
@@ -212,6 +215,40 @@ struct SettingsView: View {
                 )
 
                 Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var displayCard: some View {
+        SettingsCard(title: "显示入口", symbol: "macwindow.badge.plus") {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("显示位置")
+                        .font(.headline.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk)
+                    Text("刘海屏显示在刘海旁，其他屏幕使用菜单栏。")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(TokenIslandDisplayPlacement.allCases) { placement in
+                        DisplayPlacementButton(
+                            title: placement.shortTitle,
+                            selected: appState.settings.tokenIslandPlacement == placement
+                        ) {
+                            appState.setTokenIslandPlacement(placement)
+                        }
+                    }
+                }
+
+                StatusLine(
+                    symbol: appState.shouldShowTokenIsland ? "circle.dotted.circle.fill" : "menubar.rectangle",
+                    title: appState.tokenIslandStatus,
+                    value: appState.tokenIslandStatusDetail,
+                    tint: appState.shouldShowTokenIsland ? .tokenGreen : .gray
+                )
             }
         }
     }
@@ -397,6 +434,7 @@ struct SettingsView: View {
                 appState.setAutoUpdateEnabled(TokenStepSettings.defaults.autoUpdateEnabled)
                 appState.setAskBeforeDownloadingUpdates(TokenStepSettings.defaults.askBeforeDownloadingUpdates)
                 appState.setRequireVerifiedUpdates(TokenStepSettings.defaults.requireVerifiedUpdates)
+                appState.setTokenIslandPlacement(TokenStepSettings.defaults.tokenIslandPlacement)
                 appState.setAutostart(true)
             } label: {
                 Text("恢复默认")
@@ -448,6 +486,31 @@ private struct RefreshOption: Identifiable {
     var title: String
 }
 
+private struct DisplayPlacementButton: View {
+    var title: String
+    var selected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .heavy))
+                }
+                Text(title)
+                    .font(.caption.weight(.heavy))
+            }
+            .foregroundStyle(selected ? Color.white : Color.tokenInk.opacity(0.72))
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background(selected ? Color.tokenGreen : Color.tokenTrack.opacity(0.42), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(selected ? Color.clear : Color.black.opacity(0.04)))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct SettingsCard<Content: View>: View {
     var title: String
     var symbol: String
@@ -478,6 +541,7 @@ private struct SettingsCard<Content: View>: View {
         }
         .padding(22)
         .frame(height: 238)
+        .frame(maxWidth: .infinity)
         .background(Color.tokenSurface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.black.opacity(0.06)))
         .shadow(color: Color.black.opacity(0.055), radius: 22, x: 0, y: 14)

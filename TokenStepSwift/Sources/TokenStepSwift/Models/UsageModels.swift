@@ -82,6 +82,33 @@ struct SourceInfo: Codable {
     var records: Int?
 }
 
+enum TokenIslandDisplayPlacement: String, CaseIterable, Identifiable, Codable {
+    case automatic = "auto"
+    case notchLeft = "notch_left"
+    case notchRight = "notch_right"
+    case menuBar = "menu_bar"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic: return "自动"
+        case .notchLeft: return "刘海左侧"
+        case .notchRight: return "刘海右侧"
+        case .menuBar: return "菜单栏"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .automatic: return "自动"
+        case .notchLeft: return "左侧"
+        case .notchRight: return "右侧"
+        case .menuBar: return "菜单栏"
+        }
+    }
+}
+
 struct TokenStepSettings: Codable {
     var dailyGoalTokens: Int
     var refreshIntervalSeconds: Int
@@ -90,6 +117,8 @@ struct TokenStepSettings: Codable {
     var autoUpdateEnabled: Bool
     var askBeforeDownloadingUpdates: Bool
     var requireVerifiedUpdates: Bool
+    var tokenIslandEnabled: Bool
+    var tokenIslandPlacement: TokenIslandDisplayPlacement
     var skippedUpdateVersion: String?
 
     enum CodingKeys: String, CodingKey {
@@ -100,6 +129,8 @@ struct TokenStepSettings: Codable {
         case autoUpdateEnabled = "auto_update_enabled"
         case askBeforeDownloadingUpdates = "ask_before_downloading_updates"
         case requireVerifiedUpdates = "require_verified_updates"
+        case tokenIslandEnabled = "token_island_enabled"
+        case tokenIslandPlacement = "token_island_placement"
         case skippedUpdateVersion = "skipped_update_version"
     }
 
@@ -111,6 +142,8 @@ struct TokenStepSettings: Codable {
         autoUpdateEnabled: true,
         askBeforeDownloadingUpdates: true,
         requireVerifiedUpdates: true,
+        tokenIslandEnabled: true,
+        tokenIslandPlacement: .automatic,
         skippedUpdateVersion: nil
     )
 
@@ -122,6 +155,8 @@ struct TokenStepSettings: Codable {
         autoUpdateEnabled: Bool,
         askBeforeDownloadingUpdates: Bool,
         requireVerifiedUpdates: Bool,
+        tokenIslandEnabled: Bool,
+        tokenIslandPlacement: TokenIslandDisplayPlacement,
         skippedUpdateVersion: String?
     ) {
         self.dailyGoalTokens = dailyGoalTokens
@@ -131,6 +166,8 @@ struct TokenStepSettings: Codable {
         self.autoUpdateEnabled = autoUpdateEnabled
         self.askBeforeDownloadingUpdates = askBeforeDownloadingUpdates
         self.requireVerifiedUpdates = requireVerifiedUpdates
+        self.tokenIslandEnabled = tokenIslandEnabled
+        self.tokenIslandPlacement = tokenIslandPlacement
         self.skippedUpdateVersion = skippedUpdateVersion
     }
 
@@ -145,6 +182,15 @@ struct TokenStepSettings: Codable {
         autoUpdateEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoUpdateEnabled) ?? defaults.autoUpdateEnabled
         askBeforeDownloadingUpdates = try container.decodeIfPresent(Bool.self, forKey: .askBeforeDownloadingUpdates) ?? defaults.askBeforeDownloadingUpdates
         requireVerifiedUpdates = try container.decodeIfPresent(Bool.self, forKey: .requireVerifiedUpdates) ?? defaults.requireVerifiedUpdates
+        let legacyTokenIslandEnabled = try container.decodeIfPresent(Bool.self, forKey: .tokenIslandEnabled)
+        tokenIslandEnabled = legacyTokenIslandEnabled ?? defaults.tokenIslandEnabled
+        if let placement = try container.decodeIfPresent(TokenIslandDisplayPlacement.self, forKey: .tokenIslandPlacement) {
+            tokenIslandPlacement = placement
+        } else if legacyTokenIslandEnabled == false {
+            tokenIslandPlacement = .menuBar
+        } else {
+            tokenIslandPlacement = defaults.tokenIslandPlacement
+        }
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
     }
 }

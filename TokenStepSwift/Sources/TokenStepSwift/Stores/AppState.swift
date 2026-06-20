@@ -14,6 +14,7 @@ final class AppState: ObservableObject {
     @Published private(set) var availableUpdate: AvailableUpdate?
     @Published private(set) var lastUpdateCheckAt: Date?
     @Published private(set) var updateDownloadedURL: URL?
+    @Published private(set) var tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable
     @Published var lastError: String?
 
     private var timer: Timer?
@@ -60,6 +61,34 @@ final class AppState: ObservableObject {
         Array(snapshot.daily.reversed())
     }
 
+    var shouldShowTokenIsland: Bool {
+        settings.tokenIslandPlacement != .menuBar
+            && TokenIslandDisplayDetector.isAvailable(for: settings.tokenIslandPlacement, size: TokenIslandWindowPresenter.collapsedSize)
+    }
+
+    var tokenIslandStatus: String {
+        switch settings.tokenIslandPlacement {
+        case .menuBar:
+            return "菜单栏模式"
+        case .automatic:
+            return shouldShowTokenIsland ? "自动：刘海旁" : "自动：菜单栏"
+        case .notchLeft:
+            return shouldShowTokenIsland ? "刘海左侧" : "菜单栏模式"
+        case .notchRight:
+            return shouldShowTokenIsland ? "刘海右侧" : "菜单栏模式"
+        }
+    }
+
+    var tokenIslandStatusDetail: String {
+        if shouldShowTokenIsland {
+            return "鼠标移入后展开浮层"
+        }
+        if settings.tokenIslandPlacement == .menuBar {
+            return "仅使用右上角菜单栏入口"
+        }
+        return TokenIslandDisplayDetector.fallbackReason
+    }
+
     func load() {
         let loadedSettings = DataService.loadSettings()
         TokenStepThemeRuntime.apply(loadedSettings.theme)
@@ -89,6 +118,10 @@ final class AppState: ObservableObject {
         lastError = nil
     }
 
+    func refreshTokenIslandAvailability() {
+        tokenIslandAvailable = TokenIslandDisplayDetector.isAvailable(for: settings.tokenIslandPlacement, size: TokenIslandWindowPresenter.collapsedSize)
+    }
+
     func setGoal(_ tokens: Int) {
         settings.dailyGoalTokens = max(1_000_000, tokens)
         saveSettingsAndReload()
@@ -104,6 +137,17 @@ final class AppState: ObservableObject {
         TokenStepThemeRuntime.apply(theme)
         settings.theme = theme
         saveSettingsAndReload()
+    }
+
+    func setTokenIslandEnabled(_ enabled: Bool) {
+        setTokenIslandPlacement(enabled ? .automatic : .menuBar)
+    }
+
+    func setTokenIslandPlacement(_ placement: TokenIslandDisplayPlacement) {
+        settings.tokenIslandPlacement = placement
+        settings.tokenIslandEnabled = placement != .menuBar
+        saveSettingsAndReload()
+        refreshTokenIslandAvailability()
     }
 
     func setAutoUpdateEnabled(_ enabled: Bool) {
