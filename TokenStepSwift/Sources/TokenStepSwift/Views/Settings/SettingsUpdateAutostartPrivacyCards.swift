@@ -141,7 +141,7 @@ struct SettingsPrivacyCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("隐私状态"), symbol: "checkmark.shield.fill") {
+        SettingsCard(title: L("隐私状态"), symbol: "checkmark.shield.fill", height: 292) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
                     Image(systemName: "lock.shield.fill")

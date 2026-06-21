@@ -4,7 +4,7 @@ struct SettingsDisplayCard: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        SettingsCard(title: L("显示入口"), symbol: "macwindow.badge.plus") {
+        SettingsCard(title: L("显示入口"), symbol: "macwindow.badge.plus", height: 268) {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(L("显示位置"))
