@@ -99,6 +99,9 @@ if [[ "$NOTARIZE" == true ]]; then
   echo "Stapling app ticket..."
   xcrun stapler staple "$APP_BUNDLE"
   xcrun stapler validate "$APP_BUNDLE"
+  echo "Recreating zip with stapled app..."
+  rm -f "$ZIP_PATH"
+  ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
 fi
 
 echo "Creating dmg..."
@@ -112,6 +115,9 @@ hdiutil create \
   -ov \
   -format UDZO \
   "$DMG_PATH"
+echo "Signing dmg with Developer ID..."
+codesign --force --timestamp --sign "$IDENTITY" "$DMG_PATH"
+codesign --verify --verbose=2 "$DMG_PATH"
 
 if [[ "$NOTARIZE" == true ]]; then
   echo "Submitting dmg for notarization..."
@@ -122,8 +128,16 @@ if [[ "$NOTARIZE" == true ]]; then
 fi
 
 echo "Validating signature..."
-spctl -a -vv "$APP_BUNDLE" || true
-spctl -a -vv -t install "$DMG_PATH" || true
+spctl -a -vv "$APP_BUNDLE"
+spctl -a -vv -t open --context context:primary-signature "$DMG_PATH"
+if [[ "$NOTARIZE" == true ]]; then
+  ZIP_VALIDATE_DIR="$RELEASE_DIR/zip-validate"
+  rm -rf "$ZIP_VALIDATE_DIR"
+  mkdir -p "$ZIP_VALIDATE_DIR"
+  ditto -x -k "$ZIP_PATH" "$ZIP_VALIDATE_DIR"
+  xcrun stapler validate "$ZIP_VALIDATE_DIR/$APP_NAME.app"
+  rm -rf "$ZIP_VALIDATE_DIR"
+fi
 
 echo
 echo "Release artifacts:"
