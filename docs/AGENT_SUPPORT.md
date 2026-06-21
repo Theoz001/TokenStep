@@ -22,15 +22,14 @@ TokenStep 对 CC Switch 的支持定位为实验性的高级统计来源，sourc
 
 当前 MVP 只读 `~/.cc-switch/cc-switch.db` 的 `proxy_request_logs` 表，并且只统计：
 
-- `coalesce(data_source, 'proxy') = 'proxy'`
 - `status_code >= 200 and status_code < 300`
 - `input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens > 0`
 
 Token 总量口径为 `input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens`。模型显示优先使用 `pricing_model`，其次是 `model`、`request_model`，都为空时显示 `unknown`。成本使用 CC Switch 写入的 `total_cost_usd`。
 
-为了避免和 TokenStep 已有 Codex / Claude Code 原生日志重复，TokenStep 默认不读取 CC Switch 的 session 导入数据，也不使用 `usage_daily_rollups` 作为 MVP 主数据源。`usage_daily_rollups` 缺少 `data_source` 维度，后续如果要支持历史 rollup，必须先确认去重策略和来源边界。
+CC Switch 的 `data_source` 在真实库里可能是 `codex_session`、`opencode_session`、`session_log` 等值，并不稳定等于 `proxy`，所以 TokenStep 不把 `data_source` 作为有效性过滤条件。为了避免和 TokenStep 已有 Codex / Claude Code 原生日志混淆，CC Switch 仍然作为独立来源展示，不会写回原生 `Codex` / `Claude Code` 名称。`usage_daily_rollups` 不是 MVP 主数据源，后续如果要支持历史 rollup，必须先确认去重策略和来源边界。
 
-TokenStep 只使用 SQLite 只读访问，不修改 CC Switch 配置，不开启代理接管。只有用户在 CC Switch 中开启 local routing 并实际产生代理请求后，`proxy_request_logs` 才会出现真实 proxy rows；如果数据库存在但没有真实 proxy rows，source status 会显示为 `missing_proxy_rows`。
+TokenStep 只使用 SQLite 只读访问，不修改 CC Switch 配置，不开启代理接管。只有用户在 CC Switch 中开启 local routing 并实际产生代理请求后，`proxy_request_logs` 才会出现有效请求行；如果数据库存在但没有成功且 token 数大于 0 的请求行，source status 会显示为 `missing_valid_rows`。
 
 ## 已参考的项目
 
