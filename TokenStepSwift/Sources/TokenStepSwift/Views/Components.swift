@@ -251,6 +251,7 @@ struct ActivityBarsView: View {
     var rows: [DailyUsage]
     var goal: Int
     var maxCount: Int = 30
+    @State private var hoveredDayID: DailyUsage.ID?
 
     var visibleRows: [DailyUsage] {
         Array(rows.suffix(maxCount))
@@ -263,21 +264,39 @@ struct ActivityBarsView: View {
             let width = max(4, (proxy.size.width - gap * CGFloat(max(days.count - 1, 0))) / CGFloat(max(days.count, 1)))
             let maxTokens = max(goal, days.map(\.totalTokens).max() ?? 1, 1)
 
-            ZStack(alignment: .bottomLeading) {
-                Rectangle()
-                    .fill(.quaternary)
-                    .frame(height: 1)
-                    .offset(y: -proxy.size.height * CGFloat(goal) / CGFloat(maxTokens))
+            ZStack(alignment: .topTrailing) {
+                ZStack(alignment: .bottomLeading) {
+                    Rectangle()
+                        .fill(.quaternary)
+                        .frame(height: 1)
+                        .offset(y: -proxy.size.height * CGFloat(goal) / CGFloat(maxTokens))
 
-                HStack(alignment: .bottom, spacing: gap) {
-                    ForEach(days) { day in
-                        RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
-                            .fill(contributionColor(tokens: day.totalTokens, goal: goal))
-                            .frame(width: width, height: max(4, proxy.size.height * CGFloat(day.totalTokens) / CGFloat(maxTokens)))
+                    HStack(alignment: .bottom, spacing: gap) {
+                        ForEach(days) { day in
+                            RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous)
+                                .fill(contributionColor(tokens: day.totalTokens, goal: goal))
+                                .frame(width: width, height: max(4, proxy.size.height * CGFloat(day.totalTokens) / CGFloat(maxTokens)))
+                                .frame(width: width, height: proxy.size.height, alignment: .bottom)
+                                .contentShape(Rectangle())
+                                .onHover { isHovering in
+                                    hoveredDayID = isHovering ? day.id : (hoveredDayID == day.id ? nil : hoveredDayID)
+                                }
+                                .help(dailyUsageHoverText(day, goal: goal))
+                        }
                     }
                 }
+
+                if let hoveredDay {
+                    ActivityHoverBadge(day: hoveredDay, goal: goal)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+                }
             }
+            .animation(.easeOut(duration: 0.12), value: hoveredDayID)
         }
+    }
+
+    private var hoveredDay: DailyUsage? {
+        visibleRows.first { $0.id == hoveredDayID }
     }
 }
 
@@ -285,6 +304,7 @@ struct StackedActivityBarsView: View {
     var rows: [DailyUsage]
     var goal: Int
     var maxCount: Int = 30
+    @State private var hoveredDayID: DailyUsage.ID?
 
     var visibleRows: [DailyUsage] {
         Array(rows.suffix(maxCount))
@@ -297,7 +317,8 @@ struct StackedActivityBarsView: View {
             let width = max(4, (proxy.size.width - gap * CGFloat(max(days.count - 1, 0))) / CGFloat(max(days.count, 1)))
             let maxTokens = max(goal, days.map(\.totalTokens).max() ?? 1, 1)
 
-            ZStack(alignment: .bottomLeading) {
+            ZStack(alignment: .topTrailing) {
+                ZStack(alignment: .bottomLeading) {
                 Rectangle()
                     .fill(.quaternary)
                     .frame(height: 1)
@@ -312,10 +333,27 @@ struct StackedActivityBarsView: View {
                             width: width,
                             height: proxy.size.height
                         )
+                        .frame(width: width, height: proxy.size.height, alignment: .bottom)
+                        .contentShape(Rectangle())
+                        .onHover { isHovering in
+                            hoveredDayID = isHovering ? day.id : (hoveredDayID == day.id ? nil : hoveredDayID)
+                        }
+                        .help(dailyUsageHoverText(day, goal: goal))
                     }
                 }
             }
+
+                if let hoveredDay {
+                    ActivityHoverBadge(day: hoveredDay, goal: goal)
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topTrailing)))
+                }
+            }
+            .animation(.easeOut(duration: 0.12), value: hoveredDayID)
         }
+    }
+
+    private var hoveredDay: DailyUsage? {
+        visibleRows.first { $0.id == hoveredDayID }
     }
 }
 
@@ -359,6 +397,63 @@ private struct StackedActivityBar: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: min(4, width / 2), style: .continuous))
     }
+}
+
+private struct ActivityHoverBadge: View {
+    var day: DailyUsage
+    var goal: Int
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            Text(day.date)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 5) {
+                Text(TokenStepFormat.tokens(day.totalTokens))
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Color.tokenInk)
+                    .monospacedDigit()
+                Text(lapText)
+                    .font(.caption2.weight(.heavy))
+                    .foregroundStyle(contributionColor(tokens: day.totalTokens, goal: goal))
+            }
+            if !toolSummary.isEmpty {
+                Text(toolSummary)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.tokenSurface.opacity(0.96), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.black.opacity(0.06)))
+        .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+    }
+
+    private var lapText: String {
+        guard goal > 0, day.totalTokens > 0 else { return "0%" }
+        let progress = Double(day.totalTokens) / Double(goal) * 100
+        return TokenStepFormat.percent(progress)
+    }
+
+    private var toolSummary: String {
+        orderedToolEntries(day.tools)
+            .prefix(2)
+            .map { "\($0.name) \(TokenStepFormat.tokens($0.tokens, compact: true))" }
+            .joined(separator: " · ")
+    }
+}
+
+private func dailyUsageHoverText(_ day: DailyUsage, goal: Int) -> String {
+    let progress = goal > 0 ? TokenStepFormat.percent(Double(day.totalTokens) / Double(goal) * 100) : "0%"
+    let tools = orderedToolEntries(day.tools)
+        .map { "\($0.name) \(TokenStepFormat.tokens($0.tokens, compact: true))" }
+        .joined(separator: " · ")
+    if tools.isEmpty {
+        return "\(day.date)\n\(TokenStepFormat.tokens(day.totalTokens)) · \(progress)"
+    }
+    return "\(day.date)\n\(TokenStepFormat.tokens(day.totalTokens)) · \(progress)\n\(tools)"
 }
 
 struct TokenToolLegend: View {

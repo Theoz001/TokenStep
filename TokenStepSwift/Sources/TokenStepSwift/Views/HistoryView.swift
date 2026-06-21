@@ -33,6 +33,8 @@ struct HistoryView: View {
                 }
             }
 
+            StatsView()
+
             TokenCard {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack {

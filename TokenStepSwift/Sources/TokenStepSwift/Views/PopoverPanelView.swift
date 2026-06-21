@@ -55,9 +55,11 @@ struct PopoverPanelView: View {
             .overlay(Capsule().stroke(Color.black.opacity(0.055)))
 
             if !isScreenshotRendering {
-                ShareCardMenuButton(
-                    todayAction: { copyShareCard(.today) },
-                    yesterdayAction: { copyShareCard(.yesterday) }
+                PopoverCaptureMenuButton(
+                    shareTodayAction: { copyShareCard(.today) },
+                    shareYesterdayAction: { copyShareCard(.yesterday) },
+                    copyPopoverAction: copyPopoverScreenshot,
+                    savePopoverAction: savePopoverScreenshot
                 )
             }
         }
@@ -102,6 +104,31 @@ struct PopoverPanelView: View {
         }
     }
 
+    private var popoverScreenshot: some View {
+        PopoverPanelView()
+            .environmentObject(appState)
+            .environment(\.isScreenshotRendering, true)
+    }
+
+    private func copyPopoverScreenshot() {
+        do {
+            try ScreenshotExporter.copy(popoverScreenshot)
+        } catch {
+            appState.lastError = error.localizedDescription
+        }
+    }
+
+    private func savePopoverScreenshot() {
+        do {
+            try ScreenshotExporter.save(
+                popoverScreenshot,
+                suggestedFileName: ScreenshotExporter.suggestedFileName(prefix: "popover")
+            )
+        } catch {
+            appState.lastError = error.localizedDescription
+        }
+    }
+
     private func shareDay(for mode: ShareCardMode) -> DailyUsage? {
         switch mode {
         case .today:
@@ -126,22 +153,38 @@ struct PopoverPanelView: View {
 
 }
 
-private struct ShareCardMenuButton: View {
-    var todayAction: () -> Void
-    var yesterdayAction: () -> Void
+private struct PopoverCaptureMenuButton: View {
+    var shareTodayAction: () -> Void
+    var shareYesterdayAction: () -> Void
+    var copyPopoverAction: () -> Void
+    var savePopoverAction: () -> Void
 
     var body: some View {
         Menu {
             Button {
-                todayAction()
+                shareTodayAction()
             } label: {
                 Label(L("分享今日卡片"), systemImage: "sun.max.fill")
             }
 
             Button {
-                yesterdayAction()
+                shareYesterdayAction()
             } label: {
                 Label(L("分享昨日成绩"), systemImage: "calendar.badge.clock")
+            }
+
+            Divider()
+
+            Button {
+                copyPopoverAction()
+            } label: {
+                Label(L("复制浮层截图"), systemImage: "doc.on.clipboard")
+            }
+
+            Button {
+                savePopoverAction()
+            } label: {
+                Label(L("保存浮层 PNG"), systemImage: "square.and.arrow.down")
             }
         } label: {
             Image(systemName: "camera.fill")
@@ -155,8 +198,8 @@ private struct ShareCardMenuButton: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
-        .help(L("分享战绩卡片"))
-        .accessibilityLabel(L("分享战绩卡片"))
+        .help(L("截图与分享"))
+        .accessibilityLabel(L("截图与分享"))
     }
 }
 
