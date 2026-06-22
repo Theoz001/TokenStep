@@ -7,9 +7,10 @@ struct StatusBarLabelView: View {
     var refreshing: Bool
     var theme: TokenStepTheme
     var language: TokenStepLanguage
+    var numberDisplayFormat: TokenNumberDisplayFormat = .auto
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: numberDisplayFormat == .hidden ? 0 : 7) {
             Image(nsImage: StatusBarIconRenderer.progressRing(progress: lap.currentLapProgress, lap: lap.currentLap, refreshing: refreshing))
                 .resizable()
                 .interpolation(.high)
@@ -17,14 +18,21 @@ struct StatusBarLabelView: View {
                 .accessibilityLabel("\(lap.lapTitle) \(lap.lapPercentText)")
                 .id("\(theme.id)-\(language.resolved.id)")
 
-            Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(Color.primary)
+            if numberDisplayFormat != .hidden {
+                Text(TokenStepFormat.tokenDisplayString(
+                    tokens,
+                    format: numberDisplayFormat,
+                    goal: lap.goal,
+                    language: language
+                ))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.primary)
+            }
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, numberDisplayFormat == .hidden ? 0 : 2)
         .frame(height: 24)
-        .id("\(theme.id)-\(language.resolved.id)")
+        .id("\(theme.id)-\(language.resolved.id)-\(numberDisplayFormat.id)")
     }
 }
 

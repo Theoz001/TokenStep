@@ -362,6 +362,7 @@ enum TokenNumberDisplayFormat: String, Codable, CaseIterable, Identifiable {
     case enCompact
     case full
     case percent
+    case hidden
 
     var id: String { rawValue }
 
@@ -372,6 +373,7 @@ enum TokenNumberDisplayFormat: String, Codable, CaseIterable, Identifiable {
         case .enCompact: return "英文缩写（K/M/B）"
         case .full: return "完整数字"
         case .percent: return "占每日目标百分比"
+        case .hidden: return "隐藏数字"
         }
     }
 }

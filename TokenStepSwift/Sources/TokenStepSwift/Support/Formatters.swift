@@ -39,6 +39,8 @@ enum TokenStepFormat {
         switch format {
         case .auto:
             return tokens(value, compact: true, language: explicitLanguage)
+        case .hidden:
+            return ""
         case .zhCompact:
             let hundredMillionUnit = "亿"
             let tenThousandUnit = "万"

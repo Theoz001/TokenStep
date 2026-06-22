@@ -59,7 +59,7 @@ struct TokenIslandRingView: View {
     var language: TokenStepLanguage
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: appState.settings.numberDisplayFormat == .hidden ? 0 : 5) {
             Image(nsImage: StatusBarIconRenderer.progressRing(
                 progress: lap.currentLapProgress,
                 lap: lap.currentLap,
@@ -75,21 +75,24 @@ struct TokenIslandRingView: View {
                 .accessibilityLabel("\(lap.lapTitle) \(lap.lapPercentText)")
                 .id("\(theme.id)-\(language.resolved.id)")
 
-            Text(TokenStepFormat.tokenDisplayString(
-                tokens,
-                format: appState.settings.numberDisplayFormat,
-                goal: appState.settings.dailyGoalTokens,
-                language: language
-            ))
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.74)
+            if appState.settings.numberDisplayFormat != .hidden {
+                Text(TokenStepFormat.tokenDisplayString(
+                    tokens,
+                    format: appState.settings.numberDisplayFormat,
+                    goal: appState.settings.dailyGoalTokens,
+                    language: language
+                ))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+            }
         }
-        .padding(.leading, 7)
-        .padding(.trailing, 8)
-        .frame(width: TokenIslandWindowPresenter.collapsedSize.width, height: TokenIslandWindowPresenter.collapsedSize.height)
+        .padding(.leading, appState.settings.numberDisplayFormat == .hidden ? 9 : 7)
+        .padding(.trailing, appState.settings.numberDisplayFormat == .hidden ? 9 : 8)
+        .frame(width: appState.settings.numberDisplayFormat == .hidden ? 32 : TokenIslandWindowPresenter.collapsedSize.width,
+               height: TokenIslandWindowPresenter.collapsedSize.height)
         .background(Color.black)
         .clipShape(Capsule())
         .id("\(theme.id)-\(language.resolved.id)")
