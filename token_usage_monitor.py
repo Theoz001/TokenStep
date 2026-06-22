@@ -32,6 +32,7 @@ TOOL_COLORS = {
     "Codex": "#2563eb",
     "Claude Code": "#df7656",
     "Kimi Code": "#7c3aed",
+    "Kimi Code CLI": "#9959f2",
     "ZCode": "#10b981",
     "Pi": "#f59e0b",
     "Reasonix": "#ec4899",
@@ -343,76 +344,88 @@ def collect_claude_code() -> tuple[list[dict[str, Any]], dict[str, Any]]:
 
 
 def collect_kimi_code() -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Read Kimi Code (Daimon runtime) wire logs.
-
-    Path pattern:
-      ~/Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions/<workspace>/<session>/agents/main/wire.jsonl
-    """
+    """Read Kimi Code wire logs from both the Desktop agent and the CLI."""
     home = Path.home()
-    pattern = str(
-        home
-        / "Library"
-        / "Application Support"
-        / "kimi-desktop"
-        / "daimon-share"
-        / "daimon"
-        / "runtime"
-        / "kimi-code"
-        / "home"
-        / "sessions"
-        / "**"
-        / "agents"
-        / "main"
-        / "wire.jsonl"
-    )
-    paths = glob.glob(pattern, recursive=True)
+    roots = [
+        (
+            "Kimi Code",
+            str(
+                home
+                / "Library"
+                / "Application Support"
+                / "kimi-desktop"
+                / "daimon-share"
+                / "daimon"
+                / "runtime"
+                / "kimi-code"
+                / "home"
+                / "sessions"
+                / "**"
+                / "agents"
+                / "main"
+                / "wire.jsonl"
+            ),
+        ),
+        (
+            "Kimi Code CLI",
+            str(home / ".kimi-code" / "sessions" / "**" / "agents" / "main" / "wire.jsonl"),
+        ),
+    ]
+
+    model_aliases = {
+        "daimon-kimi-code": "Kimi 2.6",
+        "kimi-code/kimi-for-coding": "Kimi for coding",
+        "kimi-for-coding": "Kimi for coding",
+    }
 
     records: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
     files_read = 0
 
-    for path in sorted(paths):
-        session_id = Path(path).parent.parent.parent.name
-        files_read += 1
-        try:
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                for line_no, line in enumerate(f, 1):
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except Exception:
-                        continue
-                    if obj.get("type") != "usage.record":
-                        continue
-                    usage_raw = obj.get("usage")
-                    if not isinstance(usage_raw, dict):
-                        continue
-                    usage = normalize_usage(usage_raw)
-                    if usage["total_tokens"] <= 0:
-                        continue
-                    ts_ms = obj.get("time")
-                    day = date_from_epoch(int(ts_ms) / 1000 if isinstance(ts_ms, (int, float)) else None)
-                    if not day:
-                        continue
-                    model = model_key(obj.get("model") or "daimon-kimi-code")
-                    dedupe_key = (session_id, str(ts_ms), line_no, usage["total_tokens"])
-                    if dedupe_key in seen:
-                        continue
-                    seen.add(dedupe_key)
-                    records.append(
-                        {
-                            "date": day,
-                            "timestamp": ts_ms,
-                            "tool": "Kimi Code",
-                            "model": model,
-                            "usage": usage,
-                            "source": "kimi-wire-jsonl",
-                        }
-                    )
-        except Exception:
-            continue
+    for tool, pattern in roots:
+        for path in sorted(glob.glob(pattern, recursive=True)):
+            session_id = Path(path).parent.parent.parent.name
+            files_read += 1
+            try:
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    for line_no, line in enumerate(f, 1):
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                        except Exception:
+                            continue
+                        if obj.get("type") != "usage.record":
+                            continue
+                        usage_raw = obj.get("usage")
+                        if not isinstance(usage_raw, dict):
+                            continue
+                        usage = normalize_usage(usage_raw)
+                        if usage["total_tokens"] <= 0:
+                            continue
+                        ts_ms = obj.get("time")
+                        day = date_from_epoch(int(ts_ms) / 1000 if isinstance(ts_ms, (int, float)) else None)
+                        if not day:
+                            continue
+                        raw_model = model_key(obj.get("model") or "daimon-kimi-code")
+                        model = model_aliases.get(raw_model, raw_model)
+                        dedupe_key = (tool, session_id, str(ts_ms), line_no, usage["total_tokens"])
+                        if dedupe_key in seen:
+                            continue
+                        seen.add(dedupe_key)
+                        records.append(
+                            {
+                                "date": day,
+                                "timestamp": ts_ms,
+                                "tool": tool,
+                                "model": model,
+                                "usage": usage,
+                                "source": "kimi-wire-jsonl",
+                            }
+                        )
+            except Exception:
+                continue
 
     return records, {"status": "ok" if records else "missing", "files": files_read, "records": len(records)}
 

@@ -366,75 +366,92 @@ enum UsageCollector {
         modifiedSince cutoffDate: Date?
     ) -> CollectorResult {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let root = home
-            .appendingPathComponent("Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions", isDirectory: true)
-        let paths = jsonlFiles(under: root, modifiedSince: cutoffDate).filter { $0.path.hasSuffix("/agents/main/wire.jsonl") }
+        let roots: [(url: URL, tool: String)] = [
+            (
+                home.appendingPathComponent(
+                    "Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions",
+                    isDirectory: true
+                ),
+                "Kimi Code"
+            ),
+            (
+                home.appendingPathComponent(".kimi-code/sessions", isDirectory: true),
+                "Kimi Code CLI"
+            )
+        ]
         let modelMapping = kimiModelMapping()
         var records: [UsageRecord] = []
         var seen = Set<String>()
+        var totalFiles = 0
 
-        for path in paths.sorted(by: { $0.path < $1.path }) {
-            livePaths.insert(path.path)
-            if let cached = cachedRecords(for: path, tool: "Kimi Code", cache: cache) {
-                records.append(contentsOf: cached)
-                continue
-            }
+        for (root, tool) in roots {
+            let paths = jsonlFiles(under: root, modifiedSince: cutoffDate)
+                .filter { $0.path.hasSuffix("/agents/main/wire.jsonl") }
+            totalFiles += paths.count
 
-            var fileRecords: [UsageRecord] = []
-            let sessionID = path.deletingPathExtension().deletingPathExtension().deletingPathExtension().lastPathComponent
-            var lineNumber = 0
-            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
-
-            try? forEachLine(in: path, matchingAny: ["usage.record"]) { line in
-                autoreleasepool {
-                    lineNumber += 1
-                    guard let obj = jsonObject(line),
-                          obj["type"] as? String == "usage.record",
-                          let usageRaw = obj["usage"] as? [String: Any]
-                    else {
-                        return
-                    }
-                    let usage = normalizeUsage(usageRaw)
-                    guard usage.totalTokens > 0,
-                          let ts = obj["time"],
-                          let day = dayString(fromEpoch: ts)
-                    else {
-                        return
-                    }
-                    let rawModel = modelKey(obj["model"] as? String)
-                    let model = modelMapping[rawModel] ?? rawModel
-                    let key = "\(sessionID)|\(ts)|\(lineNumber)|\(usage.totalTokens)"
-                    guard !seen.contains(key) else { return }
-                    seen.insert(key)
-                    let timestampString: String? = {
-                        guard let seconds = epochSeconds(ts) else { return nil }
-                        return isoString(fromEpoch: seconds)
-                    }()
-                    fileRecords.append(
-                        UsageRecord(
-                            date: day,
-                            timestamp: timestampString,
-                            tool: "Kimi Code",
-                            model: model,
-                            usage: usage,
-                            source: .nativeKimiCode,
-                            requestID: key,
-                            sessionID: sessionID,
-                            sourcePath: path.path,
-                            lineNumber: lineNumber
-                        )
-                    )
+            for path in paths.sorted(by: { $0.path < $1.path }) {
+                livePaths.insert(path.path)
+                if let cached = cachedRecords(for: path, tool: tool, cache: cache) {
+                    records.append(contentsOf: cached)
+                    continue
                 }
+
+                var fileRecords: [UsageRecord] = []
+                let sessionID = path.deletingPathExtension().deletingPathExtension().deletingPathExtension().lastPathComponent
+                var lineNumber = 0
+                guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
+
+                try? forEachLine(in: path, matchingAny: ["usage.record"]) { line in
+                    autoreleasepool {
+                        lineNumber += 1
+                        guard let obj = jsonObject(line),
+                              obj["type"] as? String == "usage.record",
+                              let usageRaw = obj["usage"] as? [String: Any]
+                        else {
+                            return
+                        }
+                        let usage = normalizeUsage(usageRaw)
+                        guard usage.totalTokens > 0,
+                              let ts = obj["time"],
+                              let day = dayString(fromEpoch: ts)
+                        else {
+                            return
+                        }
+                        let rawModel = modelKey(obj["model"] as? String)
+                        let model = modelMapping[rawModel] ?? canonicalModelName(rawModel)
+                        let key = "\(sessionID)|\(ts)|\(lineNumber)|\(usage.totalTokens)"
+                        guard !seen.contains(key) else { return }
+                        seen.insert(key)
+                        let timestampString: String? = {
+                            guard let seconds = epochSeconds(ts) else { return nil }
+                            return isoString(fromEpoch: seconds)
+                        }()
+                        fileRecords.append(
+                            UsageRecord(
+                                date: day,
+                                timestamp: timestampString,
+                                tool: tool,
+                                model: model,
+                                usage: usage,
+                                source: .nativeKimiCode,
+                                requestID: key,
+                                sessionID: sessionID,
+                                sourcePath: path.path,
+                                lineNumber: lineNumber
+                            )
+                        )
+                    }
+                }
+                records.append(contentsOf: fileRecords)
+                updateCache(path: path, tool: tool, records: fileRecords, cache: &cache)
             }
-            records.append(contentsOf: fileRecords)
-            updateCache(path: path, tool: "Kimi Code", records: fileRecords, cache: &cache)
         }
 
         return CollectorResult(
             records: records,
             source: SourceInfo(
                 status: records.isEmpty ? "missing" : "ok",
-                files: paths.count,
+                files: totalFiles,
                 records: records.count
             )
         )
@@ -442,19 +459,46 @@ enum UsageCollector {
 
     private static func kimiModelMapping() -> [String: String] {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let configURL = home.appendingPathComponent("Library/Application Support/kimi-desktop/daimon-share/daimon/config.json")
-        guard let data = try? Data(contentsOf: configURL),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let modelConfig = json["model"] as? [String: Any],
-              let models = modelConfig["models"] as? [String: [String: Any]]
-        else {
-            return [:]
-        }
         var mapping: [String: String] = [:]
-        for (key, entry) in models {
-            guard let actual = entry["model"] as? String else { continue }
-            mapping[key] = actual
+
+        let desktopConfig = home.appendingPathComponent(
+            "Library/Application Support/kimi-desktop/daimon-share/daimon/config.json"
+        )
+        if let data = try? Data(contentsOf: desktopConfig),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let modelConfig = json["model"] as? [String: Any],
+           let models = modelConfig["models"] as? [String: [String: Any]] {
+            for (key, entry) in models {
+                if let actual = entry["model"] as? String {
+                    mapping[key] = actual
+                }
+            }
         }
+
+        let cliConfig = home.appendingPathComponent(".kimi-code/config.toml")
+        if let text = try? String(contentsOf: cliConfig, encoding: .utf8) {
+            let modelSectionPattern = #"^\[models\."([^"]+)"\]"#
+            let displayNamePattern = #"display_name\s*=\s*"([^"]+)""#
+            var currentKey: String?
+            for line in text.components(separatedBy: .newlines) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.range(of: modelSectionPattern, options: .regularExpression) != nil,
+                   let keyRange = trimmed.range(of: #""([^"]+)""#, options: .regularExpression) {
+                    let start = trimmed.index(keyRange.lowerBound, offsetBy: 1)
+                    let end = trimmed.index(keyRange.upperBound, offsetBy: -1)
+                    currentKey = String(trimmed[start..<end])
+                    continue
+                }
+                if let key = currentKey,
+                   trimmed.range(of: displayNamePattern, options: .regularExpression) != nil,
+                   let valueRange = trimmed.range(of: #""([^"]+)""#, options: .regularExpression) {
+                    let start = trimmed.index(valueRange.lowerBound, offsetBy: 1)
+                    let end = trimmed.index(valueRange.upperBound, offsetBy: -1)
+                    mapping[key] = String(trimmed[start..<end])
+                }
+            }
+        }
+
         return mapping
     }
 
@@ -1442,6 +1486,8 @@ enum UsageCollector {
             "k2p6": "Kimi 2.6",
             "kimi-k2.6": "Kimi 2.6",
             "kimi-k2.7": "Kimi 2.7",
+            "kimi-code/kimi-for-coding": "Kimi for coding",
+            "kimi-for-coding": "Kimi for coding",
             "kimi-k2.5": "Kimi 2.5",
             "kimi-k2-thinking": "Kimi 2.0 Thinking",
             "kimi-k2-instruct-taiji": "Kimi 2.0 Instruct Taiji",
@@ -1601,7 +1647,7 @@ enum UsageCollector {
         if tool == "Claude Code" {
             return Double(usage.totalTokens) / 1_000_000 * 3
         }
-        if tool == "Kimi Code" {
+        if tool == "Kimi Code" || tool == "Kimi Code CLI" {
             return Double(usage.totalTokens) / 1_000_000 * 0.8
         }
         if tool == "ZCode" || lower.contains("glm") {
