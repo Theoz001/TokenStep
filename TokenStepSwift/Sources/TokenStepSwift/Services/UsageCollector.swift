@@ -130,7 +130,7 @@ enum UsageCollector {
             return nil
         }
 
-        let query = "select created_at, model, tokens_used from threads where tokens_used > 0"
+        let query = "select created_at, model, model_provider, tokens_used from threads where tokens_used > 0"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
         process.arguments = ["-readonly", "-json", database.path, query]
@@ -161,11 +161,13 @@ enum UsageCollector {
             }
             var usage = TokenUsageCounts()
             usage.totalTokens = tokens
+            let explicitModel = (row["model"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            let fallbackModel = (row["model_provider"] as? String).flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
             return UsageRecord(
                 date: day,
                 timestamp: nil,
                 tool: "Codex",
-                model: modelKey(row["model"] as? String),
+                model: modelKey(explicitModel ?? fallbackModel),
                 usage: usage,
                 source: .nativeCodexSQLite
             )
@@ -217,6 +219,9 @@ enum UsageCollector {
 
                     if type == "session_meta", let id = payload?["id"] as? String, !id.isEmpty {
                         sessionID = id
+                    }
+                    if currentModel == "unknown", let provider = payload?["model_provider"] as? String, !provider.isEmpty {
+                        currentModel = modelKey(provider)
                     }
                     if type == "turn_context" {
                         currentModel = modelKey(payload?["model"] as? String ?? currentModel)
@@ -1485,6 +1490,7 @@ enum UsageCollector {
             "default-1.1": "Default 1.1",
             "default-1.2": "Default 1.2",
             "lite": "Lite",
+            "openai": "OpenAI",
         ]
         return aliases[lower] ?? stripped
     }
