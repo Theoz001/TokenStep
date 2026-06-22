@@ -103,11 +103,11 @@ struct PopoverQuotaCard: View {
         if usd == 0 && cny == 0 {
             return "-"
         }
-        if usd > 0 && cny > 0 {
-            return "\(TokenStepFormat.money(usd)) / ¥\(String(format: "%.2f", cny))"
+        if prefersUSDDisplay(model), usd > 0 {
+            return "\(TokenStepFormat.money(usd)) / \(TokenStepFormat.moneyCNY(cny))"
         }
         if cny > 0 {
-            return "¥\(String(format: "%.2f", cny))"
+            return TokenStepFormat.moneyCNY(cny)
         }
         return TokenStepFormat.money(usd)
     }

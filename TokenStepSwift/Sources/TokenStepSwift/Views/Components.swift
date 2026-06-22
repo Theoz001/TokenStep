@@ -311,7 +311,7 @@ struct UsageProgressRow: View {
     }
 }
 
-private func prefersUSDDisplay(_ name: String) -> Bool {
+func prefersUSDDisplay(_ name: String) -> Bool {
     let lower = name.lowercased()
     return lower.contains("codex") || lower.contains("gpt") || lower.contains("openai")
 }
