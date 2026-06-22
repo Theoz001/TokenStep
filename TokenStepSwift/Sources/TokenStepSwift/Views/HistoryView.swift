@@ -106,7 +106,7 @@ private struct HistoryRow: View {
                 .fontWeight(.heavy)
                 .foregroundStyle(Color.tokenInk)
                 .frame(width: 150, alignment: .leading)
-            Text("\(TokenStepFormat.money(row.cost)) / \(TokenStepFormat.moneyCNY(row.cost * TokenStepCostEstimator.exchangeRate))")
+            Text(costText)
                 .frame(width: 170, alignment: .leading)
                 .foregroundStyle(Color.tokenInk.opacity(0.72))
                 .lineLimit(1)
@@ -132,5 +132,18 @@ private struct HistoryRow: View {
 
     private var dominantTool: String {
         row.tools.max(by: { $0.value < $1.value })?.key ?? L("无")
+    }
+
+    private var costText: String {
+        let cny = row.cost * TokenStepCostEstimator.exchangeRate
+        if prefersUSDDisplay(dominantTool) {
+            return "\(TokenStepFormat.money(row.cost)) / \(TokenStepFormat.moneyCNY(cny))"
+        }
+        return TokenStepFormat.moneyCNY(cny)
+    }
+
+    private func prefersUSDDisplay(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower.contains("codex") || lower.contains("gpt") || lower.contains("openai")
     }
 }

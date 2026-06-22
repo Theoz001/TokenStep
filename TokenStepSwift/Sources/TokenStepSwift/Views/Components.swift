@@ -292,16 +292,28 @@ struct UsageProgressRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 if costUSD > 0 || costCNY > 0 {
-                    Text("\(TokenStepFormat.money(costUSD)) / \(TokenStepFormat.moneyCNY(costCNY))")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if prefersUSDDisplay(name) {
+                        Text("\(TokenStepFormat.money(costUSD)) / \(TokenStepFormat.moneyCNY(costCNY))")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else {
+                        Text(TokenStepFormat.moneyCNY(costCNY))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
             .frame(width: 132, alignment: .trailing)
         }
         .frame(height: costUSD > 0 || costCNY > 0 ? 36 : 24)
     }
+}
+
+private func prefersUSDDisplay(_ name: String) -> Bool {
+    let lower = name.lowercased()
+    return lower.contains("codex") || lower.contains("gpt") || lower.contains("openai")
 }
 
 struct ActivityBarsView: View {
