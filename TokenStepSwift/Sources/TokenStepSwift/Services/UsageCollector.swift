@@ -19,13 +19,14 @@ enum UsageCollector {
         let zcode = collectZCode(modifiedSince: sourceCutoff)
         let pi = collectPi(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         let reasonix = collectReasonix(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        let workbuddy = collectWorkBuddy(modifiedSince: sourceCutoff)
         var ccSwitch = includeCCSwitchProxyUsage
             ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         cache.files = cache.files.filter { livePaths.contains($0.key) }
         saveCache(cache)
 
-        let nativeRecords = codex.records + claude.records + kimi.records + zcode.records + pi.records + reasonix.records
+        let nativeRecords = codex.records + claude.records + kimi.records + zcode.records + pi.records + reasonix.records + workbuddy.records
         let deduped = deduplicateCrossSource(
             nativeRecords: nativeRecords,
             proxyRecords: ccSwitch.records
@@ -42,6 +43,7 @@ enum UsageCollector {
                 "ZCode": zcode.source,
                 "Pi": pi.source,
                 "Reasonix": reasonix.source,
+                "WorkBuddy": workbuddy.source,
                 ccSwitchSourceName: ccSwitch.source
             ]
         )
@@ -443,13 +445,10 @@ enum UsageCollector {
         else {
             return [:]
         }
-        let friendlyNames: [String: String] = [
-            "k2p6": "Kimi 2.6"
-        ]
         var mapping: [String: String] = [:]
         for (key, entry) in models {
             guard let actual = entry["model"] as? String else { continue }
-            mapping[key] = friendlyNames[actual] ?? actual
+            mapping[key] = actual
         }
         return mapping
     }
@@ -692,6 +691,79 @@ enum UsageCollector {
             source: SourceInfo(
                 status: records.isEmpty ? "missing" : "ok",
                 files: paths.count,
+                records: records.count
+            )
+        )
+    }
+
+    private static func collectWorkBuddy(modifiedSince cutoffDate: Date?) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let database = home.appendingPathComponent(".workbuddy/workbuddy.db")
+
+        guard FileManager.default.isReadableFile(atPath: database.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        let cutoffClause: String
+        if let cutoff = cutoffDate {
+            let ms = Int(cutoff.timeIntervalSince1970 * 1000)
+            cutoffClause = "AND s.created_at >= \(ms)"
+        } else {
+            cutoffClause = ""
+        }
+
+        let query = """
+        SELECT s.id AS session_id, s.created_at, s.model, u.used
+        FROM sessions s
+        JOIN session_usage u ON s.id = u.session_id
+        WHERE u.used > 0
+          \(cutoffClause)
+        ORDER BY s.created_at
+        """
+
+        guard let rows = sqliteJSONRows(database: database, query: query) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "query_failed", files: 1, records: 0)
+            )
+        }
+
+        var seen = Set<String>()
+        let records = rows.compactMap { row -> UsageRecord? in
+            let tokens = integerValue(row["used"] as Any)
+            guard tokens > 0,
+                  let ts = row["created_at"],
+                  let day = dayString(fromEpoch: ts),
+                  let sessionID = nonEmptyString(row["session_id"] as? String)
+            else {
+                return nil
+            }
+            let key = "\(sessionID):\(tokens)"
+            guard !seen.contains(key) else { return nil }
+            seen.insert(key)
+            var usage = TokenUsageCounts()
+            usage.totalTokens = tokens
+            return UsageRecord(
+                date: day,
+                timestamp: isoString(fromEpoch: ts),
+                tool: "WorkBuddy",
+                model: modelKey(row["model"] as? String),
+                usage: usage,
+                source: .nativeWorkBuddy,
+                requestID: key,
+                sessionID: sessionID,
+                sourcePath: database.path
+            )
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "ok" : "ok",
+                files: 1,
                 records: records.count
             )
         )
@@ -1035,6 +1107,7 @@ enum UsageCollector {
                     date: item.date,
                     tools: item.tools,
                     models: item.models,
+                    toolModels: item.toolModels,
                     totalTokens: item.totalTokens,
                     cost: rounded(item.cost, digits: 4)
                 )
@@ -1349,8 +1422,71 @@ enum UsageCollector {
     }
 
     private static func modelKey(_ model: String?) -> String {
-        let value = (model ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? "unknown" : value
+        canonicalModelName(model)
+    }
+
+    private static func canonicalModelName(_ model: String?) -> String {
+        let raw = (model ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty { return "unknown" }
+        let stripped = raw.hasPrefix("custom-local:")
+            ? String(raw.dropFirst("custom-local:".count))
+            : raw
+        let lower = stripped.lowercased()
+        let aliases: [String: String] = [
+            "daimon-kimi-code": "Kimi 2.6",
+            "k2p6": "Kimi 2.6",
+            "kimi-k2.6": "Kimi 2.6",
+            "kimi-k2.7": "Kimi 2.7",
+            "kimi-k2.5": "Kimi 2.5",
+            "kimi-k2-thinking": "Kimi 2.0 Thinking",
+            "kimi-k2-instruct-taiji": "Kimi 2.0 Instruct Taiji",
+            "deepseek-v4-pro": "DeepSeek V4 Pro",
+            "deepseek-v4-flash": "DeepSeek V4 Flash",
+            "deepseek-v3-2-volc": "DeepSeek V3.2 Volc",
+            "deepseek-v3-1-volc": "DeepSeek V3.1 Volc",
+            "deepseek-v3-1-lkeap": "DeepSeek V3.1 LKeap",
+            "deepseek-v3-1": "DeepSeek V3.1",
+            "deepseek-v3-0324-lkeap": "DeepSeek V3-0324 LKeap",
+            "deepseek-v3-0324": "DeepSeek V3-0324",
+            "deepseek-v3-0324-taco-completion": "DeepSeek V3-0324 Taco",
+            "deepseek-r1-0528-lkeap": "DeepSeek R1-0528 LKeap",
+            "deepseek-r1-0528": "DeepSeek R1-0528",
+            "glm-5.2": "GLM-5.2",
+            "glm-5.1": "GLM-5.1",
+            "glm-5.0": "GLM-5.0",
+            "glm-5.0-turbo": "GLM-5.0 Turbo",
+            "glm-5v-turbo": "GLM-5V Turbo",
+            "glm-4.7": "GLM-4.7",
+            "glm-4.6": "GLM-4.6",
+            "glm-4.6v": "GLM-4.6V",
+            "glm": "GLM",
+            "gpt-5.5": "GPT-5.5",
+            "gpt-5.4": "GPT-5.4",
+            "gpt-5": "GPT-5",
+            "gpt-5-codex": "GPT-5 Codex",
+            "gpt-5.4-mini": "GPT-5.4 Mini",
+            "codex-auto-review": "Codex Auto-Review",
+            "claude-opus": "Claude Opus",
+            "claude-sonnet": "Claude Sonnet",
+            "claude-3-opus": "Claude 3 Opus",
+            "claude-3-sonnet": "Claude 3 Sonnet",
+            "claude-3.5-sonnet": "Claude 3.5 Sonnet",
+            "minimax-m2.7": "MiniMax M2.7",
+            "minimax-m2.5": "MiniMax M2.5",
+            "minimax": "MiniMax",
+            "hunyuan-chat": "Hunyuan Chat",
+            "hunyuan-2.0-thinking": "Hunyuan 2.0 Thinking",
+            "hunyuan-2.0-instruct": "Hunyuan 2.0 Instruct",
+            "hunyuan-image-v3.0": "Hunyuan Image V3.0",
+            "hunyuan-3b": "Hunyuan 3B",
+            "hunyuan-7b-dense": "Hunyuan 7B Dense",
+            "auto": "Auto",
+            "default": "Default",
+            "default-1.1": "Default 1.1",
+            "default-1.2": "Default 1.2",
+            "lite": "Lite",
+        ]
+        return aliases[lower] ?? stripped
     }
 
     private static func claudeIdentity(
@@ -1465,7 +1601,7 @@ enum UsageCollector {
         if tool == "ZCode" || lower.contains("glm") {
             return Double(usage.totalTokens) / 1_000_000 * 0.5
         }
-        if tool == "Pi" || tool == "Reasonix" || lower.contains("deepseek") {
+        if tool == "Pi" || tool == "Reasonix" || tool == "WorkBuddy" || lower.contains("deepseek") {
             return Double(usage.totalTokens) / 1_000_000 * 0.5
         }
         return Double(usage.totalTokens) / 1_000_000
@@ -1573,6 +1709,7 @@ private enum UsageRecordSource: String, Codable {
     case nativeZCode
     case nativePi
     case nativeReasonix
+    case nativeWorkBuddy
     case ccSwitchProxy
     case unknown
 }
@@ -1668,12 +1805,14 @@ private struct DailyAccumulator {
     var date: String
     var tools: [String: Int] = [:]
     var models: [String: Int] = [:]
+    var toolModels: [String: [String: Int]] = [:]
     var totalTokens = 0
     var cost = 0.0
 
     mutating func add(record: UsageRecord, cost: Double) {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
+        toolModels[record.tool, default: [:]][record.model, default: 0] += record.usage.totalTokens
         totalTokens += record.usage.totalTokens
         self.cost += cost
     }
