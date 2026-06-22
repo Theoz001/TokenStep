@@ -3,6 +3,14 @@ import SwiftUI
 struct PopoverQuotaCard: View {
     @EnvironmentObject private var appState: AppState
 
+    private var topModels: [ModelUsage] {
+        Array(appState.snapshot.models.sorted { $0.tokens > $1.tokens }.prefix(5))
+    }
+
+    private var totalModelTokens: Int {
+        topModels.map(\.tokens).reduce(0, +)
+    }
+
     var body: some View {
         TokenCard {
             VStack(alignment: .leading, spacing: 13) {
@@ -10,125 +18,78 @@ struct PopoverQuotaCard: View {
                     Circle()
                         .fill(Color.tokenGreen)
                         .frame(width: 8, height: 8)
-                    Text(L("Agent 剩余额度"))
+                    Text(L("模型用量"))
                         .font(.callout.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
                     Spacer()
-                    if appState.isRefreshingCodexQuota {
-                        ProgressView()
-                            .controlSize(.small)
-                            .scaleEffect(0.72)
-                    } else if let fetchedAt = appState.codexQuota.fetchedAt {
-                        Text(quotaFetchedText(fetchedAt))
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.secondary)
-                    } else if let fetchedAt = appState.claudeQuota.fetchedAt {
-                        Text(quotaFetchedText(fetchedAt))
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.secondary)
-                    }
                 }
 
-                if appState.hasAnyQuota {
-                    VStack(spacing: 12) {
-                        if appState.codexQuota.isAvailable {
-                            quotaSection(title: "Codex", quota: appState.codexQuota)
-                        }
-                        if appState.claudeQuota.isAvailable {
-                            quotaSection(title: "Claude Code", quota: appState.claudeQuota)
-                        }
-                    }
-                } else {
+                if topModels.isEmpty {
                     HStack(spacing: 10) {
-                        Image(systemName: "terminal")
+                        Image(systemName: "cube")
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(Color.tokenGreen)
                             .frame(width: 28, height: 28)
                             .background(Color.tokenMint.opacity(0.22), in: Circle())
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(L("暂未读取到 Agent 额度"))
+                            Text(L("暂无模型用量数据"))
                                 .font(.caption.weight(.heavy))
                                 .foregroundStyle(Color.tokenInk.opacity(0.76))
-                            Text(L("打开并登录 Codex / Claude Code 后会自动显示。"))
+                            Text(L("使用支持的 Agent 后这里会显示模型分布。"))
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
                     }
                     .padding(.vertical, 2)
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(topModels) { model in
+                            modelRow(model)
+                        }
+                    }
                 }
             }
         }
         .padding(.vertical, -2)
     }
 
-    private func quotaSection(title: String, quota: CodexQuotaSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(Color.tokenInk.opacity(0.76))
-            VStack(spacing: 8) {
-                quotaRow(quota.fiveHour, fallbackTitle: L("5 小时"))
-                quotaRow(quota.sevenDay, fallbackTitle: L("7 天"))
-            }
-        }
-    }
-
-    private func quotaRow(_ window: CodexQuotaWindow?, fallbackTitle: String) -> some View {
+    private func modelRow(_ model: ModelUsage) -> some View {
         HStack(spacing: 10) {
-            Text(window?.title ?? fallbackTitle)
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(Color.tokenInk.opacity(0.72))
-                .frame(width: 44, alignment: .leading)
+            Circle()
+                .fill(tokenToolColor(model.tool ?? ""))
+                .frame(width: 8, height: 8)
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(window.map { LFormat("剩余 %@", TokenStepFormat.percent($0.remainingPercent)) } ?? L("等待同步"))
+                    Text(model.model)
                         .font(.caption.weight(.heavy))
-                        .foregroundStyle(window == nil ? .secondary : Color.tokenInk.opacity(0.82))
+                        .foregroundStyle(Color.tokenInk.opacity(0.82))
+                        .lineLimit(1)
+                    if let tool = model.tool, !tool.isEmpty, tool != model.model {
+                        Text(tool)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                     Spacer()
-                    Text(window.map { quotaResetText($0.resetsAt) } ?? L("等待重置"))
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
+                    Text(TokenStepFormat.tokens(model.tokens, compact: true))
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(Color.tokenInk.opacity(0.72))
                 }
+
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule()
                             .fill(Color.tokenGreen.opacity(0.10))
-                        if let window {
+                        if totalModelTokens > 0 {
                             Capsule()
-                                .fill(Color.tokenGreen)
-                                .frame(width: max(5, proxy.size.width * window.remainingPercent / 100))
+                                .fill(tokenToolColor(model.tool ?? ""))
+                                .frame(width: max(5, proxy.size.width * CGFloat(model.tokens) / CGFloat(totalModelTokens)))
                         }
                     }
                 }
-                .frame(height: 6)
+                .frame(height: 5)
             }
         }
-    }
-
-    private func quotaResetText(_ date: Date?) -> String {
-        guard let date else { return L("等待重置") }
-        let seconds = max(0, Int(date.timeIntervalSinceNow.rounded()))
-        if seconds < 60 {
-            return L("即将重置")
-        }
-        if seconds < 3_600 {
-            return LFormat("%d 分后重置", max(1, seconds / 60))
-        }
-        if seconds < 86_400 {
-            let hours = seconds / 3_600
-            let minutes = (seconds % 3_600) / 60
-            return LFormat("约 %d:%02d 后重置", hours, minutes)
-        }
-        let days = max(1, Int(ceil(Double(seconds) / 86_400)))
-        return LFormat("%d 天后重置", days)
-    }
-
-    private func quotaFetchedText(_ date: Date) -> String {
-        let seconds = max(0, Int(Date().timeIntervalSince(date).rounded()))
-        if seconds < 60 {
-            return L("刚刚")
-        }
-        return LFormat("%d 分钟前", max(1, seconds / 60))
     }
 }
