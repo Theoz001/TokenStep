@@ -150,6 +150,14 @@ def model_key(model: str | None) -> str:
     return value if value else "unknown"
 
 
+def _rate(rates: dict[str, Any], key: str, fallback_key: str | None = None) -> float:
+    if key in rates:
+        return float(rates[key])
+    if fallback_key and fallback_key in rates:
+        return float(rates[fallback_key])
+    return 0.0
+
+
 def match_pricing_model(pricing: dict[str, Any], model: str) -> dict[str, Any] | None:
     models = pricing.get("models", {})
     lower = model.lower()
@@ -166,24 +174,30 @@ def estimate_cost(usage: dict[str, int], tool: str, model: str, pricing: dict[st
     if not rates:
         rates = pricing.get("tools", {}).get(tool)
     if not rates:
-        rates = {"total_usd_per_1m": pricing.get("default_total_usd_per_1m", 0)}
+        rates = {"total_per_1m": pricing.get("default_total_usd_per_1m", 0), "currency": "USD"}
 
-    if "total_usd_per_1m" in rates:
-        return usage.get("total_tokens", 0) / 1_000_000 * float(rates.get("total_usd_per_1m", 0))
+    exchange_rate = float(pricing.get("exchange_rate", {}).get("usd_to_cny", 7.25))
+    currency = str(rates.get("currency", "USD")).upper()
 
-    total = 0.0
-    total += usage.get("input_tokens", 0) / 1_000_000 * float(rates.get("input_usd_per_1m", 0))
-    total += usage.get("output_tokens", 0) / 1_000_000 * float(rates.get("output_usd_per_1m", 0))
-    total += usage.get("cache_creation_input_tokens", 0) / 1_000_000 * float(
-        rates.get("cache_creation_usd_per_1m", rates.get("input_usd_per_1m", 0))
+    if "total_per_1m" in rates or "total_usd_per_1m" in rates:
+        total_key = "total_per_1m" if "total_per_1m" in rates else "total_usd_per_1m"
+        native = usage.get("total_tokens", 0) / 1_000_000 * float(rates.get(total_key, 0))
+        return native / exchange_rate if currency == "CNY" else native
+
+    input_rate = _rate(rates, "input_per_1m", "input_usd_per_1m")
+    output_rate = _rate(rates, "output_per_1m", "output_usd_per_1m")
+    cache_read_rate = _rate(rates, "cache_read_per_1m", "cache_read_usd_per_1m") or input_rate
+    cache_creation_rate = _rate(rates, "cache_creation_per_1m", "cache_creation_usd_per_1m") or input_rate
+    reasoning_rate = _rate(rates, "reasoning_per_1m", "reasoning_usd_per_1m") or output_rate
+
+    native = (
+        usage.get("input_tokens", 0) / 1_000_000 * input_rate
+        + usage.get("output_tokens", 0) / 1_000_000 * output_rate
+        + usage.get("cache_creation_input_tokens", 0) / 1_000_000 * cache_creation_rate
+        + usage.get("cache_read_input_tokens", 0) / 1_000_000 * cache_read_rate
+        + usage.get("reasoning_output_tokens", 0) / 1_000_000 * reasoning_rate
     )
-    total += usage.get("cache_read_input_tokens", 0) / 1_000_000 * float(
-        rates.get("cache_read_usd_per_1m", 0)
-    )
-    total += usage.get("reasoning_output_tokens", 0) / 1_000_000 * float(
-        rates.get("reasoning_usd_per_1m", rates.get("output_usd_per_1m", 0))
-    )
-    return total
+    return native / exchange_rate if currency == "CNY" else native
 
 
 def collect_codex() -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -191,7 +205,6 @@ def collect_codex() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     home = Path.home()
     for pattern in [
         str(home / ".codex" / "sessions" / "**" / "*.jsonl"),
-        str(home / ".codex" / "archived_sessions" / "*.jsonl"),
     ]:
         paths.extend(glob.glob(pattern, recursive=True))
 

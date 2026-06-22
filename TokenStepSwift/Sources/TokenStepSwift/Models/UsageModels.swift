@@ -48,6 +48,9 @@ struct DailyUsage: Codable, Identifiable {
     var tools: [String: Int]
     var models: [String: Int]
     var toolModels: [String: [String: Int]]?
+    var modelCostUSD: [String: Double]?
+    var modelCostCNY: [String: Double]?
+    var modelCostNative: [String: String]?
     var totalTokens: Int
     var cost: Double
 
@@ -56,15 +59,31 @@ struct DailyUsage: Codable, Identifiable {
         case tools
         case models
         case toolModels = "tool_models"
+        case modelCostUSD = "model_cost_usd"
+        case modelCostCNY = "model_cost_cny"
+        case modelCostNative = "model_cost_native"
         case totalTokens = "total_tokens"
         case cost
     }
 
-    init(date: String, tools: [String: Int], models: [String: Int] = [:], toolModels: [String: [String: Int]]? = nil, totalTokens: Int, cost: Double) {
+    init(
+        date: String,
+        tools: [String: Int],
+        models: [String: Int] = [:],
+        toolModels: [String: [String: Int]]? = nil,
+        modelCostUSD: [String: Double]? = nil,
+        modelCostCNY: [String: Double]? = nil,
+        modelCostNative: [String: String]? = nil,
+        totalTokens: Int,
+        cost: Double
+    ) {
         self.date = date
         self.tools = tools
         self.models = models
         self.toolModels = toolModels
+        self.modelCostUSD = modelCostUSD
+        self.modelCostCNY = modelCostCNY
+        self.modelCostNative = modelCostNative
         self.totalTokens = totalTokens
         self.cost = cost
     }
@@ -75,6 +94,9 @@ struct DailyUsage: Codable, Identifiable {
         tools = try container.decodeIfPresent([String: Int].self, forKey: .tools) ?? [:]
         models = try container.decodeIfPresent([String: Int].self, forKey: .models) ?? [:]
         toolModels = try container.decodeIfPresent([String: [String: Int]].self, forKey: .toolModels)
+        modelCostUSD = try container.decodeIfPresent([String: Double].self, forKey: .modelCostUSD)
+        modelCostCNY = try container.decodeIfPresent([String: Double].self, forKey: .modelCostCNY)
+        modelCostNative = try container.decodeIfPresent([String: String].self, forKey: .modelCostNative)
         totalTokens = try container.decode(Int.self, forKey: .totalTokens)
         cost = try container.decode(Double.self, forKey: .cost)
     }
@@ -334,6 +356,26 @@ enum TokenStepLanguage: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum TokenNumberDisplayFormat: String, Codable, CaseIterable, Identifiable {
+    case auto
+    case zhCompact
+    case enCompact
+    case full
+    case percent
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto: return "跟随语言"
+        case .zhCompact: return "中文缩写（万/亿）"
+        case .enCompact: return "英文缩写（K/M/B）"
+        case .full: return "完整数字"
+        case .percent: return "占每日目标百分比"
+        }
+    }
+}
+
 struct TokenStepSettings: Codable {
     var dailyGoalTokens: Int
     var refreshIntervalSeconds: Int
@@ -349,6 +391,7 @@ struct TokenStepSettings: Codable {
     var tokenRankUserID: String
     var language: TokenStepLanguage
     var skippedUpdateVersion: String?
+    var numberDisplayFormat: TokenNumberDisplayFormat
 
     enum CodingKeys: String, CodingKey {
         case dailyGoalTokens = "daily_goal_tokens"
@@ -365,6 +408,7 @@ struct TokenStepSettings: Codable {
         case tokenRankUserID = "token_rank_user_id"
         case language
         case skippedUpdateVersion = "skipped_update_version"
+        case numberDisplayFormat = "number_display_format"
     }
 
     static let defaults = TokenStepSettings(
@@ -381,7 +425,8 @@ struct TokenStepSettings: Codable {
         showTokenRank: false,
         tokenRankUserID: "",
         language: .system,
-        skippedUpdateVersion: nil
+        skippedUpdateVersion: nil,
+        numberDisplayFormat: .auto
     )
 
     init(
@@ -398,7 +443,8 @@ struct TokenStepSettings: Codable {
         showTokenRank: Bool,
         tokenRankUserID: String,
         language: TokenStepLanguage,
-        skippedUpdateVersion: String?
+        skippedUpdateVersion: String?,
+        numberDisplayFormat: TokenNumberDisplayFormat
     ) {
         self.dailyGoalTokens = dailyGoalTokens
         self.refreshIntervalSeconds = refreshIntervalSeconds
@@ -414,6 +460,7 @@ struct TokenStepSettings: Codable {
         self.tokenRankUserID = Self.cleanedTokenRankUserID(tokenRankUserID)
         self.language = language
         self.skippedUpdateVersion = skippedUpdateVersion
+        self.numberDisplayFormat = numberDisplayFormat
     }
 
     static func cleanedTokenRankUserID(_ value: String) -> String {
@@ -448,5 +495,10 @@ struct TokenStepSettings: Codable {
         tokenRankUserID = Self.cleanedTokenRankUserID(decodedTokenRankUserID)
         language = try container.decodeIfPresent(TokenStepLanguage.self, forKey: .language) ?? defaults.language
         skippedUpdateVersion = try container.decodeIfPresent(String.self, forKey: .skippedUpdateVersion)
+        if let formatValue = try container.decodeIfPresent(String.self, forKey: .numberDisplayFormat) {
+            numberDisplayFormat = TokenNumberDisplayFormat(rawValue: formatValue) ?? defaults.numberDisplayFormat
+        } else {
+            numberDisplayFormat = defaults.numberDisplayFormat
+        }
     }
 }

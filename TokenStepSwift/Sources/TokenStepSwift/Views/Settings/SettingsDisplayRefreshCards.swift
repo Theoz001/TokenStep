@@ -89,6 +89,34 @@ struct SettingsRefreshCard: View {
     }
 }
 
+struct SettingsNumberFormatCard: View {
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        SettingsCard(title: L("数字显示"), symbol: "number", height: 200) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(L("菜单栏和弹层里的 Token 数字按哪种方式显示。"))
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Picker("", selection: Binding(
+                    get: { appState.settings.numberDisplayFormat },
+                    set: { appState.setNumberDisplayFormat($0) }
+                )) {
+                    ForEach(TokenNumberDisplayFormat.allCases) { format in
+                        Text(format.displayName).tag(format)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .font(.callout.weight(.semibold))
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+}
+
 struct SettingsTokenRankCard: View {
     @EnvironmentObject private var appState: AppState
 

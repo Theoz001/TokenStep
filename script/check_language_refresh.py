@@ -64,7 +64,8 @@ def main() -> int:
             failures,
         )
         require(
-            "TokenStepFormat.tokens(tokens, compact: true, language: language)" in body,
+            "TokenStepFormat.tokens(tokens, compact: true, language: language)" in body
+            or "TokenStepFormat.tokenDisplayString(" in body,
             f"{name} must format the menu text with the explicit language.",
             failures,
         )

@@ -47,7 +47,10 @@ struct PopoverTodayRingCard: View {
                             .foregroundStyle(.secondary)
 
                         VStack(alignment: .leading, spacing: 8) {
-                            MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
+                            MetricPill(
+                                label: L("消耗金额"),
+                                value: "\(TokenStepFormat.money(appState.today.cost)) / ¥\(String(format: "%.2f", appState.today.cost * TokenStepCostEstimator.exchangeRate))"
+                            )
                             MetricPill(label: L("活跃"), value: localizedDays(appState.snapshot.totals.activeDays))
                         }
                     }

@@ -53,7 +53,10 @@ struct TodayView: View {
                     }
 
                     HStack(spacing: 10) {
-                        MetricPill(label: L("消耗金额"), value: TokenStepFormat.money(appState.today.cost))
+                        MetricPill(
+                            label: L("消耗金额"),
+                            value: "\(TokenStepFormat.money(appState.today.cost)) / ¥\(String(format: "%.2f", appState.today.cost * TokenStepCostEstimator.exchangeRate))"
+                        )
                         MetricPill(label: L("本月均值"), value: TokenStepFormat.tokens(appState.monthAverage, compact: true))
                     }
                 }

@@ -214,6 +214,11 @@ final class AppState: ObservableObject {
         updateInstallStatus = L("准备更新")
     }
 
+    func setNumberDisplayFormat(_ format: TokenNumberDisplayFormat) {
+        settings.numberDisplayFormat = format
+        saveSettingsAndReload()
+    }
+
     func setTokenIslandEnabled(_ enabled: Bool) {
         setTokenIslandPlacement(enabled ? .automatic : .menuBar)
     }

@@ -74,6 +74,13 @@ struct PopoverQuotaCard: View {
                         .foregroundStyle(Color.tokenInk.opacity(0.72))
                 }
 
+                HStack(spacing: 6) {
+                    Spacer()
+                    Text(costText(for: model.name))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.tokenInk.opacity(0.54))
+                }
+
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule()
@@ -88,5 +95,20 @@ struct PopoverQuotaCard: View {
                 .frame(height: 5)
             }
         }
+    }
+
+    private func costText(for model: String) -> String {
+        let usd = appState.today.modelCostUSD?[model] ?? 0
+        let cny = appState.today.modelCostCNY?[model] ?? 0
+        if usd == 0 && cny == 0 {
+            return "-"
+        }
+        if usd > 0 && cny > 0 {
+            return "\(TokenStepFormat.money(usd)) / ¥\(String(format: "%.2f", cny))"
+        }
+        if cny > 0 {
+            return "¥\(String(format: "%.2f", cny))"
+        }
+        return TokenStepFormat.money(usd)
     }
 }

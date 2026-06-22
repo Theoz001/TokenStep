@@ -51,6 +51,7 @@ struct TokenIslandPopoverWindowView: View {
 }
 
 struct TokenIslandRingView: View {
+    @EnvironmentObject private var appState: AppState
     var tokens: Int
     var lap: TokenStepLapProgress
     var refreshing: Bool
@@ -74,7 +75,12 @@ struct TokenIslandRingView: View {
                 .accessibilityLabel("\(lap.lapTitle) \(lap.lapPercentText)")
                 .id("\(theme.id)-\(language.resolved.id)")
 
-            Text(TokenStepFormat.tokens(tokens, compact: true, language: language))
+            Text(TokenStepFormat.tokenDisplayString(
+                tokens,
+                format: appState.settings.numberDisplayFormat,
+                goal: appState.settings.dailyGoalTokens,
+                language: language
+            ))
                 .font(.system(size: 13, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .monospacedDigit()
@@ -107,7 +113,11 @@ private struct TokenIslandExpandedView: View {
                         .foregroundStyle(lap.color)
                         .monospacedDigit()
                         .lineLimit(1)
-                    Text(TokenStepFormat.tokens(appState.today.totalTokens))
+                    Text(TokenStepFormat.tokenDisplayString(
+                        appState.today.totalTokens,
+                        format: appState.settings.numberDisplayFormat,
+                        goal: appState.settings.dailyGoalTokens
+                    ))
                         .font(.system(size: 27, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                         .monospacedDigit()
@@ -173,7 +183,11 @@ private struct TokenIslandExpandedView: View {
         ZStack {
             ProgressRingView(progress: lap.currentLapProgress, lineWidth: 9, color: lap.color)
             VStack(spacing: 2) {
-                Text(TokenStepFormat.tokens(appState.today.totalTokens, compact: true))
+                Text(TokenStepFormat.tokenDisplayString(
+                    appState.today.totalTokens,
+                    format: appState.settings.numberDisplayFormat,
+                    goal: appState.settings.dailyGoalTokens
+                ))
                     .font(.system(size: 17, weight: .heavy, design: .rounded))
                     .foregroundStyle(.white)
                     .minimumScaleFactor(0.62)

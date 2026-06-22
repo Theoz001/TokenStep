@@ -1,68 +1,153 @@
 {
-  "notes": "Rough local estimates only. Edit these numbers if you want bill-like cost tracking.",
+  "notes": "Approximate API pricing for cost estimation. Chinese models use CNY, OpenAI/DeepSeek/GLM use USD. Edit to match your actual bill.",
+  "exchange_rate": {
+    "usd_to_cny": 7.25
+  },
   "default_total_usd_per_1m": 1.0,
   "tools": {
     "Codex": {
-      "total_usd_per_1m": 1.0
+      "currency": "USD",
+      "total_per_1m": 1.0
     },
     "Claude Code": {
-      "total_usd_per_1m": 3.0
+      "currency": "USD",
+      "total_per_1m": 3.0
     },
     "Kimi Code": {
-      "total_usd_per_1m": 0.8
+      "currency": "CNY",
+      "input_per_1m": 6.9,
+      "output_per_1m": 29.0,
+      "cache_read_per_1m": 1.16,
+      "cache_creation_per_1m": 6.9
+    },
+    "Kimi Code CLI": {
+      "currency": "CNY",
+      "input_per_1m": 6.9,
+      "output_per_1m": 29.0,
+      "cache_read_per_1m": 1.16,
+      "cache_creation_per_1m": 6.9
     },
     "ZCode": {
-      "total_usd_per_1m": 0.5
+      "currency": "USD",
+      "input_per_1m": 1.0,
+      "output_per_1m": 3.2,
+      "cache_read_per_1m": 0.2,
+      "cache_creation_per_1m": 1.0
     },
     "Pi": {
-      "total_usd_per_1m": 0.5
+      "currency": "USD",
+      "total_per_1m": 0.5
     },
     "Reasonix": {
-      "total_usd_per_1m": 0.5
+      "currency": "USD",
+      "total_per_1m": 0.5
     }
   },
   "models": {
-    "gpt-5.5": {
-      "total_usd_per_1m": 1.0
+    "Kimi for coding": {
+      "currency": "CNY",
+      "input_per_1m": 6.9,
+      "output_per_1m": 29.0,
+      "cache_read_per_1m": 1.16,
+      "cache_creation_per_1m": 6.9
     },
-    "gpt-5.4": {
-      "total_usd_per_1m": 1.0
+    "Kimi 2.6": {
+      "currency": "CNY",
+      "input_per_1m": 6.9,
+      "output_per_1m": 29.0,
+      "cache_read_per_1m": 1.16,
+      "cache_creation_per_1m": 6.9
     },
-    "gpt-5": {
-      "total_usd_per_1m": 1.0
+    "Kimi 2.7": {
+      "currency": "CNY",
+      "input_per_1m": 6.9,
+      "output_per_1m": 29.0,
+      "cache_read_per_1m": 1.16,
+      "cache_creation_per_1m": 6.9
     },
-    "gpt-5-codex": {
-      "total_usd_per_1m": 1.0
+    "DeepSeek V4 Pro": {
+      "currency": "USD",
+      "input_per_1m": 0.435,
+      "output_per_1m": 0.87,
+      "cache_read_per_1m": 0.003625,
+      "cache_creation_per_1m": 0.435
     },
-    "claude-opus": {
-      "input_usd_per_1m": 15.0,
-      "output_usd_per_1m": 75.0,
-      "cache_creation_usd_per_1m": 18.75,
-      "cache_read_usd_per_1m": 1.5
-    },
-    "claude-sonnet": {
-      "input_usd_per_1m": 3.0,
-      "output_usd_per_1m": 15.0,
-      "cache_creation_usd_per_1m": 3.75,
-      "cache_read_usd_per_1m": 0.3
-    },
-    "glm": {
-      "total_usd_per_1m": 0.2
-    },
-    "minimax": {
-      "total_usd_per_1m": 0.2
+    "DeepSeek V4 Flash": {
+      "currency": "USD",
+      "input_per_1m": 0.14,
+      "output_per_1m": 0.28,
+      "cache_read_per_1m": 0.0028,
+      "cache_creation_per_1m": 0.14
     },
     "GLM-5.2": {
-      "total_usd_per_1m": 0.5
+      "currency": "USD",
+      "input_per_1m": 1.4,
+      "output_per_1m": 4.4,
+      "cache_read_per_1m": 0.26,
+      "cache_creation_per_1m": 1.4
     },
-    "deepseek-v4-pro": {
-      "total_usd_per_1m": 0.5
+    "GLM-5.1": {
+      "currency": "USD",
+      "input_per_1m": 1.4,
+      "output_per_1m": 4.4,
+      "cache_read_per_1m": 0.26,
+      "cache_creation_per_1m": 1.4
     },
-    "deepseek-v4-flash": {
-      "total_usd_per_1m": 0.1
+    "GLM-5": {
+      "currency": "USD",
+      "input_per_1m": 1.0,
+      "output_per_1m": 3.2,
+      "cache_read_per_1m": 0.2,
+      "cache_creation_per_1m": 1.0
     },
-    "daimon-kimi-code": {
-      "total_usd_per_1m": 0.8
+    "GPT-5.5": {
+      "currency": "USD",
+      "input_per_1m": 5.0,
+      "output_per_1m": 30.0,
+      "cache_read_per_1m": 0.5,
+      "cache_creation_per_1m": 5.0
+    },
+    "GPT-5.4": {
+      "currency": "USD",
+      "input_per_1m": 2.5,
+      "output_per_1m": 15.0,
+      "cache_read_per_1m": 0.25,
+      "cache_creation_per_1m": 2.5
+    },
+    "GPT-5": {
+      "currency": "USD",
+      "input_per_1m": 1.25,
+      "output_per_1m": 10.0,
+      "cache_read_per_1m": 0.125,
+      "cache_creation_per_1m": 1.25
+    },
+    "GPT-5 Codex": {
+      "currency": "USD",
+      "input_per_1m": 2.5,
+      "output_per_1m": 15.0,
+      "cache_read_per_1m": 0.25,
+      "cache_creation_per_1m": 2.5
+    },
+    "Codex Auto-Review": {
+      "currency": "USD",
+      "input_per_1m": 2.5,
+      "output_per_1m": 15.0,
+      "cache_read_per_1m": 0.25,
+      "cache_creation_per_1m": 2.5
+    },
+    "Claude Opus": {
+      "currency": "USD",
+      "input_per_1m": 15.0,
+      "output_per_1m": 75.0,
+      "cache_read_per_1m": 1.5,
+      "cache_creation_per_1m": 18.75
+    },
+    "Claude Sonnet": {
+      "currency": "USD",
+      "input_per_1m": 3.0,
+      "output_per_1m": 15.0,
+      "cache_read_per_1m": 0.3,
+      "cache_creation_per_1m": 3.75
     }
   }
 }

@@ -30,6 +30,53 @@ enum TokenStepFormat {
         return "\(value)"
     }
 
+    static func tokenDisplayString(
+        _ value: Int,
+        format: TokenNumberDisplayFormat = .auto,
+        goal: Int = 100_000_000,
+        language explicitLanguage: TokenStepLanguage? = nil
+    ) -> String {
+        switch format {
+        case .auto:
+            return tokens(value, compact: true, language: explicitLanguage)
+        case .zhCompact:
+            let hundredMillionUnit = "亿"
+            let tenThousandUnit = "万"
+            if value >= 100_000_000 {
+                return "\(trim(Double(value) / 100_000_000, digits: 2))\(hundredMillionUnit)"
+            }
+            if value >= 10_000 {
+                return "\(trim(Double(value) / 10_000, digits: value >= 10_000_000 ? 0 : 1))\(tenThousandUnit)"
+            }
+            return "\(value)"
+        case .enCompact:
+            if value >= 1_000_000_000 {
+                return "\(trim(Double(value) / 1_000_000_000, digits: 2))B"
+            }
+            if value >= 1_000_000 {
+                return "\(trim(Double(value) / 1_000_000, digits: value >= 10_000_000 ? 0 : 1))M"
+            }
+            if value >= 1_000 {
+                return "\(trim(Double(value) / 1_000, digits: value >= 10_000 ? 0 : 1))K"
+            }
+            return "\(value)"
+        case .full:
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        case .percent:
+            let effectiveGoal = max(goal, 1)
+            let pct = Double(value) / Double(effectiveGoal) * 100
+            if pct >= 100 {
+                return "\(Int(pct.rounded()))%"
+            }
+            if pct >= 10 {
+                return String(format: "%.1f%%", pct)
+            }
+            return String(format: "%.2f%%", pct)
+        }
+    }
+
     static func money(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency

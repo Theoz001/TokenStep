@@ -126,7 +126,8 @@ enum DataService {
             showTokenRank: settings.showTokenRank,
             tokenRankUserID: TokenStepSettings.cleanedTokenRankUserID(settings.tokenRankUserID),
             language: settings.language,
-            skippedUpdateVersion: settings.skippedUpdateVersion
+            skippedUpdateVersion: settings.skippedUpdateVersion,
+            numberDisplayFormat: settings.numberDisplayFormat
         )
     }
 }

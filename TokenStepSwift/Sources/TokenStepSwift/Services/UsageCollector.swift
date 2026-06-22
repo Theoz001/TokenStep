@@ -1157,6 +1157,9 @@ enum UsageCollector {
                     tools: item.tools,
                     models: item.models,
                     toolModels: item.toolModels,
+                    modelCostUSD: item.modelCostUSD,
+                    modelCostCNY: item.modelCostCNY,
+                    modelCostNative: item.modelCostNative,
                     totalTokens: item.totalTokens,
                     cost: rounded(item.cost, digits: 4)
                 )
@@ -1631,59 +1634,7 @@ enum UsageCollector {
     }
 
     private static func estimateCost(usage: TokenUsageCounts, tool: String, model: String) -> Double {
-        let lower = model.lowercased()
-        if tool == "Codex", lower.contains("gpt-5.5") {
-            return openAICostByParts(usage: usage, input: 5, cachedInput: 0.5, output: 30)
-        }
-        if tool == "Codex", lower.contains("gpt-5.4") {
-            return openAICostByParts(usage: usage, input: 2.5, cachedInput: 0.25, output: 15)
-        }
-        if lower.contains("opus") {
-            return costByParts(usage: usage, input: 15, output: 75, cacheCreation: 18.75, cacheRead: 1.5)
-        }
-        if lower.contains("sonnet") {
-            return costByParts(usage: usage, input: 3, output: 15, cacheCreation: 3.75, cacheRead: 0.3)
-        }
-        if tool == "Claude Code" {
-            return Double(usage.totalTokens) / 1_000_000 * 3
-        }
-        if tool == "Kimi Code" || tool == "Kimi Code CLI" {
-            return Double(usage.totalTokens) / 1_000_000 * 0.8
-        }
-        if tool == "ZCode" || lower.contains("glm") {
-            return Double(usage.totalTokens) / 1_000_000 * 0.5
-        }
-        if tool == "Pi" || tool == "Reasonix" || tool == "WorkBuddy" || lower.contains("deepseek") {
-            return Double(usage.totalTokens) / 1_000_000 * 0.5
-        }
-        return Double(usage.totalTokens) / 1_000_000
-    }
-
-    private static func openAICostByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        cachedInput: Double,
-        output: Double
-    ) -> Double {
-        let cached = max(0, usage.cacheReadInputTokens)
-        let uncachedInput = max(0, usage.inputTokens - cached)
-        return Double(uncachedInput + usage.cacheCreationInputTokens) / 1_000_000 * input
-            + Double(cached) / 1_000_000 * cachedInput
-            + Double(usage.outputTokens + usage.reasoningOutputTokens) / 1_000_000 * output
-    }
-
-    private static func costByParts(
-        usage: TokenUsageCounts,
-        input: Double,
-        output: Double,
-        cacheCreation: Double,
-        cacheRead: Double
-    ) -> Double {
-        Double(usage.inputTokens) / 1_000_000 * input
-            + Double(usage.outputTokens) / 1_000_000 * output
-            + Double(usage.cacheCreationInputTokens) / 1_000_000 * cacheCreation
-            + Double(usage.cacheReadInputTokens) / 1_000_000 * cacheRead
-            + Double(usage.reasoningOutputTokens) / 1_000_000 * output
+        TokenStepCostEstimator.cost(for: model, usage: usage).usd
     }
 
     private static func percent(_ value: Int, of total: Int) -> Double {
@@ -1820,7 +1771,7 @@ private struct ClaudeUsageCandidate {
     }
 }
 
-private struct TokenUsageCounts: Codable {
+struct TokenUsageCounts: Codable {
     var inputTokens = 0
     var outputTokens = 0
     var cacheCreationInputTokens = 0
@@ -1858,6 +1809,9 @@ private struct DailyAccumulator {
     var tools: [String: Int] = [:]
     var models: [String: Int] = [:]
     var toolModels: [String: [String: Int]] = [:]
+    var modelCostUSD: [String: Double] = [:]
+    var modelCostCNY: [String: Double] = [:]
+    var modelCostNative: [String: String] = [:]
     var totalTokens = 0
     var cost = 0.0
 
@@ -1865,6 +1819,12 @@ private struct DailyAccumulator {
         tools[record.tool, default: 0] += record.usage.totalTokens
         models[record.model, default: 0] += record.usage.totalTokens
         toolModels[record.tool, default: [:]][record.model, default: 0] += record.usage.totalTokens
+        let estimated = TokenStepCostEstimator.cost(for: record.model, usage: record.usage)
+        modelCostUSD[record.model, default: 0] += estimated.usd
+        modelCostCNY[record.model, default: 0] += estimated.cny
+        if modelCostNative[record.model] == nil {
+            modelCostNative[record.model] = "\(TokenStepFormat.money(estimated.nativeAmount)) \(estimated.nativeCurrency)"
+        }
         totalTokens += record.usage.totalTokens
         self.cost += cost
     }

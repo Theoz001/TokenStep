@@ -62,16 +62,16 @@ struct SettingsView: View {
                 SettingsDisplayCard()
             }
             HStack(alignment: .top, spacing: 18) {
-                SettingsTokenRankCard()
+                SettingsNumberFormatCard()
                 SettingsRefreshCard()
             }
             HStack(alignment: .top, spacing: 18) {
+                SettingsTokenRankCard()
                 SettingsUpdateCard()
-                SettingsAutostartCard()
             }
             HStack(alignment: .top, spacing: 18) {
+                SettingsAutostartCard()
                 SettingsPrivacyCard()
-                Spacer(minLength: 0)
             }
         }
     }
@@ -166,6 +166,7 @@ struct SettingsView: View {
                 appState.setCodexQuotaVisible(TokenStepSettings.defaults.showCodexQuota)
                 appState.setTokenRankVisible(TokenStepSettings.defaults.showTokenRank)
                 appState.setTokenRankUserID(TokenStepSettings.defaults.tokenRankUserID)
+                appState.setNumberDisplayFormat(TokenStepSettings.defaults.numberDisplayFormat)
                 appState.setAutostart(true)
             } label: {
                 Text(L("恢复默认"))
