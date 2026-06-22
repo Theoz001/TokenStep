@@ -368,7 +368,7 @@ struct TokenStepSettings: Codable {
         refreshIntervalSeconds: 300,
         historyDays: 180,
         theme: .green,
-        autoUpdateEnabled: true,
+        autoUpdateEnabled: false,
         askBeforeDownloadingUpdates: true,
         requireVerifiedUpdates: true,
         tokenIslandEnabled: false,
