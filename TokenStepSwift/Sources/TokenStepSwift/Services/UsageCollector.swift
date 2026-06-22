@@ -15,13 +15,17 @@ enum UsageCollector {
         let sourceCutoff = sourceFileCutoffDate(historyDays: historyDays)
         let codex = collectCodex(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         let claude = collectClaudeCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        let kimi = collectKimiCode(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        let zcode = collectZCode(modifiedSince: sourceCutoff)
+        let pi = collectPi(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
+        let reasonix = collectReasonix(cache: &cache, livePaths: &livePaths, modifiedSince: sourceCutoff)
         var ccSwitch = includeCCSwitchProxyUsage
             ? collectCCSwitchProxyUsage(databaseURL: ccSwitchDatabaseURL)
             : CollectorResult(records: [], source: SourceInfo(status: "disabled", files: nil, records: 0))
         cache.files = cache.files.filter { livePaths.contains($0.key) }
         saveCache(cache)
 
-        let nativeRecords = codex.records + claude.records
+        let nativeRecords = codex.records + claude.records + kimi.records + zcode.records + pi.records + reasonix.records
         let deduped = deduplicateCrossSource(
             nativeRecords: nativeRecords,
             proxyRecords: ccSwitch.records
@@ -34,6 +38,10 @@ enum UsageCollector {
             sources: [
                 "Codex": codex.source,
                 "Claude Code": claude.source,
+                "Kimi Code": kimi.source,
+                "ZCode": zcode.source,
+                "Pi": pi.source,
+                "Reasonix": reasonix.source,
                 ccSwitchSourceName: ccSwitch.source
             ]
         )
@@ -316,6 +324,327 @@ enum UsageCollector {
             fileRecords = responses.values.map(\.record)
             records.append(contentsOf: fileRecords)
             updateCache(path: path, tool: "Claude Code", records: fileRecords, cache: &cache)
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing" : "ok",
+                files: paths.count,
+                records: records.count
+            )
+        )
+    }
+
+    private static func collectKimiCode(
+        cache: inout CollectorCache,
+        livePaths: inout Set<String>,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let root = home
+            .appendingPathComponent("Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions", isDirectory: true)
+        let paths = jsonlFiles(under: root, modifiedSince: cutoffDate).filter { $0.path.hasSuffix("/agents/main/wire.jsonl") }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for path in paths.sorted(by: { $0.path < $1.path }) {
+            livePaths.insert(path.path)
+            if let cached = cachedRecords(for: path, tool: "Kimi Code", cache: cache) {
+                records.append(contentsOf: cached)
+                continue
+            }
+
+            var fileRecords: [UsageRecord] = []
+            let sessionID = path.deletingPathExtension().deletingPathExtension().deletingPathExtension().lastPathComponent
+            var lineNumber = 0
+            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
+
+            try? forEachLine(in: path, matchingAny: ["usage.record"]) { line in
+                autoreleasepool {
+                    lineNumber += 1
+                    guard let obj = jsonObject(line),
+                          obj["type"] as? String == "usage.record",
+                          let usageRaw = obj["usage"] as? [String: Any]
+                    else {
+                        return
+                    }
+                    let usage = normalizeUsage(usageRaw)
+                    guard usage.totalTokens > 0,
+                          let ts = obj["time"],
+                          let day = dayString(fromEpoch: ts)
+                    else {
+                        return
+                    }
+                    let model = modelKey(obj["model"] as? String)
+                    let key = "\(sessionID)|\(ts)|\(lineNumber)|\(usage.totalTokens)"
+                    guard !seen.contains(key) else { return }
+                    seen.insert(key)
+                    let timestampString: String? = {
+                        guard let seconds = epochSeconds(ts) else { return nil }
+                        return isoString(fromEpoch: seconds)
+                    }()
+                    fileRecords.append(
+                        UsageRecord(
+                            date: day,
+                            timestamp: timestampString,
+                            tool: "Kimi Code",
+                            model: model,
+                            usage: usage,
+                            source: .nativeKimiCode,
+                            requestID: key,
+                            sessionID: sessionID,
+                            sourcePath: path.path,
+                            lineNumber: lineNumber
+                        )
+                    )
+                }
+            }
+            records.append(contentsOf: fileRecords)
+            updateCache(path: path, tool: "Kimi Code", records: fileRecords, cache: &cache)
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing" : "ok",
+                files: paths.count,
+                records: records.count
+            )
+        )
+    }
+
+    private static func collectZCode(modifiedSince cutoffDate: Date?) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let database = home.appendingPathComponent(".zcode/cli/db/db.sqlite")
+
+        guard FileManager.default.isReadableFile(atPath: database.path) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "missing", files: 0, records: 0)
+            )
+        }
+
+        guard let metadata = fileMetadata(for: database),
+              cutoffDate == nil || Date(timeIntervalSince1970: metadata.modificationTime) >= cutoffDate!
+        else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "ok", files: 1, records: 0)
+            )
+        }
+
+        let query = """
+        SELECT
+            id,
+            session_id,
+            turn_id,
+            model_id,
+            provider_id,
+            started_at,
+            completed_at,
+            input_tokens,
+            output_tokens,
+            reasoning_tokens,
+            cache_creation_input_tokens,
+            cache_read_input_tokens,
+            computed_total_tokens
+        FROM model_usage
+        WHERE status = 'completed'
+          AND computed_total_tokens > 0
+        """
+
+        guard let rows = sqliteJSONRows(database: database, query: query) else {
+            return CollectorResult(
+                records: [],
+                source: SourceInfo(status: "query_failed", files: 1, records: 0)
+            )
+        }
+
+        let records = rows.compactMap { row -> UsageRecord? in
+            guard let ts = row["completed_at"] as? Int ?? row["started_at"] as? Int,
+                  let day = dayString(fromEpoch: ts)
+            else {
+                return nil
+            }
+            var usage = TokenUsageCounts()
+            usage.inputTokens = integerValue(row["input_tokens"] as Any)
+            usage.outputTokens = integerValue(row["output_tokens"] as Any)
+            usage.reasoningOutputTokens = integerValue(row["reasoning_tokens"] as Any)
+            usage.cacheCreationInputTokens = integerValue(row["cache_creation_input_tokens"] as Any)
+            usage.cacheReadInputTokens = integerValue(row["cache_read_input_tokens"] as Any)
+            usage.totalTokens = integerValue(row["computed_total_tokens"] as Any)
+            guard usage.totalTokens > 0 else { return nil }
+
+            return UsageRecord(
+                date: day,
+                timestamp: isoString(fromEpoch: ts),
+                tool: "ZCode",
+                model: modelKey(row["model_id"] as? String),
+                usage: usage,
+                source: .nativeZCode,
+                requestID: nonEmptyString(row["id"] as? String),
+                sessionID: nonEmptyString(row["session_id"] as? String),
+                sourcePath: database.path
+            )
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing" : "ok",
+                files: 1,
+                records: records.count
+            )
+        )
+    }
+
+    private static func collectPi(
+        cache: inout CollectorCache,
+        livePaths: inout Set<String>,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let root = home.appendingPathComponent(".pi/agent/sessions", isDirectory: true)
+        let paths = jsonlFiles(under: root, modifiedSince: cutoffDate)
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for path in paths.sorted(by: { $0.path < $1.path }) {
+            livePaths.insert(path.path)
+            if let cached = cachedRecords(for: path, tool: "Pi", cache: cache) {
+                records.append(contentsOf: cached)
+                continue
+            }
+
+            var fileRecords: [UsageRecord] = []
+            var lineNumber = 0
+            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
+
+            try? forEachLine(in: path, matchingAny: ["\"type\": \"message\"", "\"type\":\"message\""]) { line in
+                autoreleasepool {
+                    lineNumber += 1
+                    guard let obj = jsonObject(line),
+                          obj["type"] as? String == "message",
+                          let message = obj["message"] as? [String: Any],
+                          message["role"] as? String == "assistant",
+                          let usageRaw = message["usage"] as? [String: Any]
+                    else {
+                        return
+                    }
+                    let usage = normalizeUsage(usageRaw)
+                    guard usage.totalTokens > 0,
+                          let timestamp = obj["timestamp"] as? String,
+                          let day = dayString(fromISO: timestamp)
+                    else {
+                        return
+                    }
+                    let model = modelKey(message["model"] as? String)
+                    let key = "\(path.path):\(lineNumber):\(usage.totalTokens)"
+                    guard !seen.contains(key) else { return }
+                    seen.insert(key)
+                    fileRecords.append(
+                        UsageRecord(
+                            date: day,
+                            timestamp: timestamp,
+                            tool: "Pi",
+                            model: model,
+                            usage: usage,
+                            source: .nativePi,
+                            requestID: key,
+                            sourcePath: path.path,
+                            lineNumber: lineNumber
+                        )
+                    )
+                }
+            }
+            records.append(contentsOf: fileRecords)
+            updateCache(path: path, tool: "Pi", records: fileRecords, cache: &cache)
+        }
+
+        return CollectorResult(
+            records: records,
+            source: SourceInfo(
+                status: records.isEmpty ? "missing" : "ok",
+                files: paths.count,
+                records: records.count
+            )
+        )
+    }
+
+    private static func collectReasonix(
+        cache: inout CollectorCache,
+        livePaths: inout Set<String>,
+        modifiedSince cutoffDate: Date?
+    ) -> CollectorResult {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let roots = [
+            home.appendingPathComponent(".reasonix/sessions", isDirectory: true),
+            home.appendingPathComponent(".reasonix/projects", isDirectory: true)
+        ]
+        let paths = roots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
+            .filter { $0.lastPathComponent.hasSuffix(".events.jsonl") }
+        var records: [UsageRecord] = []
+        var seen = Set<String>()
+
+        for path in paths.sorted(by: { $0.path < $1.path }) {
+            livePaths.insert(path.path)
+            if let cached = cachedRecords(for: path, tool: "Reasonix", cache: cache) {
+                records.append(contentsOf: cached)
+                continue
+            }
+
+            var fileRecords: [UsageRecord] = []
+            var turnModel = [AnyHashable: String]()
+            var lineNumber = 0
+            guard FileManager.default.isReadableFile(atPath: path.path) else { continue }
+
+            try? forEachLine(in: path, matchingAny: ["model.turn.started", "model.final"]) { line in
+                autoreleasepool {
+                    lineNumber += 1
+                    guard let obj = jsonObject(line) else { return }
+                    let type = obj["type"] as? String
+
+                    if type == "model.turn.started",
+                       let turn = obj["turn"] as? AnyHashable,
+                       let model = obj["model"] as? String {
+                        turnModel[turn] = model
+                    }
+
+                    guard type == "model.final",
+                          let usageRaw = obj["usage"] as? [String: Any]
+                    else {
+                        return
+                    }
+                    let usage = normalizeUsage(usageRaw)
+                    guard usage.totalTokens > 0,
+                          let timestamp = obj["ts"] as? String,
+                          let day = dayString(fromISO: timestamp)
+                    else {
+                        return
+                    }
+                    let turn = obj["turn"] as? AnyHashable
+                    let model = modelKey(turn.flatMap { turnModel[$0] } ?? obj["model"] as? String)
+                    let key = "\(path.path):\(String(describing: turn)):\(timestamp):\(usage.totalTokens)"
+                    guard !seen.contains(key) else { return }
+                    seen.insert(key)
+                    fileRecords.append(
+                        UsageRecord(
+                            date: day,
+                            timestamp: timestamp,
+                            tool: "Reasonix",
+                            model: model,
+                            usage: usage,
+                            source: .nativeReasonix,
+                            requestID: key,
+                            sourcePath: path.path,
+                            lineNumber: lineNumber
+                        )
+                    )
+                }
+            }
+            records.append(contentsOf: fileRecords)
+            updateCache(path: path, tool: "Reasonix", records: fileRecords, cache: &cache)
         }
 
         return CollectorResult(
@@ -874,10 +1203,19 @@ enum UsageCollector {
         var usage = TokenUsageCounts()
         let aliases = [
             "input": "inputTokens",
+            "inputOther": "inputTokens",
             "output": "outputTokens",
             "cached": "cacheReadInputTokens",
+            "cacheRead": "cacheReadInputTokens",
+            "inputCacheRead": "cacheReadInputTokens",
+            "prompt_cache_hit_tokens": "cacheReadInputTokens",
+            "cacheWrite": "cacheCreationInputTokens",
+            "inputCacheCreation": "cacheCreationInputTokens",
+            "prompt_cache_miss_tokens": "cacheCreationInputTokens",
             "thoughts": "reasoningOutputTokens",
+            "reasoning_tokens": "reasoningOutputTokens",
             "total": "totalTokens",
+            "totalTokens": "totalTokens",
             "input_tokens": "inputTokens",
             "output_tokens": "outputTokens",
             "cache_creation_input_tokens": "cacheCreationInputTokens",
@@ -1081,6 +1419,15 @@ enum UsageCollector {
         if tool == "Claude Code" {
             return Double(usage.totalTokens) / 1_000_000 * 3
         }
+        if tool == "Kimi Code" {
+            return Double(usage.totalTokens) / 1_000_000 * 0.8
+        }
+        if tool == "ZCode" || lower.contains("glm") {
+            return Double(usage.totalTokens) / 1_000_000 * 0.5
+        }
+        if tool == "Pi" || tool == "Reasonix" || lower.contains("deepseek") {
+            return Double(usage.totalTokens) / 1_000_000 * 0.5
+        }
         return Double(usage.totalTokens) / 1_000_000
     }
 
@@ -1182,6 +1529,10 @@ private enum UsageRecordSource: String, Codable {
     case nativeCodex
     case nativeCodexSQLite
     case nativeClaudeCode
+    case nativeKimiCode
+    case nativeZCode
+    case nativePi
+    case nativeReasonix
     case ccSwitchProxy
     case unknown
 }
