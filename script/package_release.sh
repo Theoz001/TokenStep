@@ -5,16 +5,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="TokenStep"
 PRODUCT_NAME="TokenStepSwift"
 SWIFT_DIR="$ROOT_DIR/TokenStepSwift"
-APP_BUNDLE="$SWIFT_DIR/dist/$APP_NAME.app"
+BUILT_APP_BUNDLE="$SWIFT_DIR/dist/$APP_NAME.app"
+APP_BUNDLE="$BUILT_APP_BUNDLE"
 RELEASE_DIR="$ROOT_DIR/release"
-VERSION="${TOKENSTEP_VERSION:-0.1.33}"
+VERSION="${TOKENSTEP_VERSION:-0.1.35}"
 IDENTITY="${CODE_SIGN_IDENTITY:-}"
 NOTARIZE=false
 
 usage() {
   cat <<'USAGE'
 Usage:
-  TOKENSTEP_VERSION=0.1.33 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./script/package_release.sh [--notarize]
+  TOKENSTEP_VERSION=0.1.35 CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./script/package_release.sh [--notarize]
 
 Notarization credentials, choose one:
   TOKENSTEP_NOTARY_PROFILE="notarytool-profile"
@@ -56,16 +57,26 @@ mkdir -p "$RELEASE_DIR"
 echo "Building $APP_NAME $VERSION..."
 TOKENSTEP_VERSION="$VERSION" "$ROOT_DIR/script/build_swiftui_and_run.sh" --no-launch
 
+PACKAGE_WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tokenstep-release.XXXXXX")"
+trap 'rm -rf "$PACKAGE_WORK_DIR"' EXIT
+APP_BUNDLE="$PACKAGE_WORK_DIR/$APP_NAME.app"
+ditto "$BUILT_APP_BUNDLE" "$APP_BUNDLE"
+
+clean_bundle_metadata() {
+  find "$APP_BUNDLE" \( -name ".DS_Store" -o -name "*.nssyncsc" \) -delete
+}
+
 echo "Signing app with Developer ID..."
-find "$APP_BUNDLE" \( -name ".DS_Store" -o -name "*.nssyncsc" \) -delete
+clean_bundle_metadata
 if [[ -f "$APP_BUNDLE/Contents/Helpers/TokenStepHelper" ]]; then
   codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP_BUNDLE/Contents/Helpers/TokenStepHelper"
 fi
+clean_bundle_metadata
 codesign --force --timestamp --options runtime --sign "$IDENTITY" "$APP_BUNDLE"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
 ZIP_PATH="$RELEASE_DIR/$APP_NAME-$VERSION.zip"
-DMG_STAGING="$RELEASE_DIR/dmg-staging"
+DMG_STAGING="$PACKAGE_WORK_DIR/dmg-staging"
 DMG_PATH="$RELEASE_DIR/$APP_NAME-$VERSION.dmg"
 
 echo "Creating zip..."

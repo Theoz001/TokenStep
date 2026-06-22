@@ -54,6 +54,18 @@ enum UsageCollector {
         return aggregate(records: result.records, sources: ["Claude Code": result.source])
     }
 
+    static func collectCodexUsageSnapshotForTests(homeURL: URL) -> UsageSnapshot {
+        var cache = CollectorCache()
+        var livePaths = Set<String>()
+        let result = collectCodexFromJSONL(
+            cache: &cache,
+            livePaths: &livePaths,
+            modifiedSince: nil,
+            homeURL: homeURL
+        )
+        return aggregate(records: result.records, sources: ["Codex": result.source])
+    }
+
     static func collectUsageSnapshotForTests(
         codexRoots: [URL] = [],
         claudeRootURL: URL? = nil,
@@ -164,13 +176,10 @@ enum UsageCollector {
         cache: inout CollectorCache,
         livePaths: inout Set<String>,
         modifiedSince cutoffDate: Date?,
+        homeURL: URL = FileManager.default.homeDirectoryForCurrentUser,
         roots: [URL]? = nil
     ) -> CollectorResult {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let roots = roots ?? [
-            home.appendingPathComponent(".codex/sessions", isDirectory: true),
-            home.appendingPathComponent(".codex/archived_sessions", isDirectory: true)
-        ]
+        let roots = roots ?? defaultCodexSessionRoots(homeURL: homeURL)
         let paths = roots.flatMap { jsonlFiles(under: $0, modifiedSince: cutoffDate) }
         var records: [UsageRecord] = []
         var seen = Set<String>()
@@ -249,6 +258,14 @@ enum UsageCollector {
                 records: records.count
             )
         )
+    }
+
+    private static func defaultCodexSessionRoots(homeURL: URL) -> [URL] {
+        // archived_sessions may contain restored historical logs with rewritten timestamps.
+        // Only live Codex sessions should count as current usage.
+        [
+            homeURL.appendingPathComponent(".codex/sessions", isDirectory: true)
+        ]
     }
 
     private static func collectClaudeCode(

@@ -5,6 +5,7 @@ struct CCSwitchProxyFixtureCheck {
     static func main() throws {
         try runCCSwitchChecks()
         try runClaudeCodeChecks()
+        try runCodexArchivedSessionChecks()
         try runCrossSourceDedupeChecks()
         print("Usage collector fixture checks passed")
     }
@@ -159,6 +160,33 @@ struct CCSwitchProxyFixtureCheck {
         try runCodexProxyDedupeChecks()
     }
 
+    private static func runCodexArchivedSessionChecks() throws {
+        let home = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TokenStepCodexArchivedFixture-\(UUID().uuidString)", isDirectory: true)
+        let liveRoot = home.appendingPathComponent(".codex/sessions/2026/06/22", isDirectory: true)
+        let archivedRoot = home.appendingPathComponent(".codex/archived_sessions/2026/06/22", isDirectory: true)
+        try FileManager.default.createDirectory(at: liveRoot, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: archivedRoot, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: home)
+        }
+
+        try codexLines(sessionID: "live-session", totalTokens: 120)
+            .joined(separator: "\n")
+            .write(to: liveRoot.appendingPathComponent("live.jsonl"), atomically: true, encoding: .utf8)
+        try codexLines(sessionID: "archived-session", totalTokens: 900_000_000)
+            .joined(separator: "\n")
+            .write(to: archivedRoot.appendingPathComponent("archived.jsonl"), atomically: true, encoding: .utf8)
+
+        let snapshot = UsageCollector.collectCodexUsageSnapshotForTests(homeURL: home)
+        try assertEqual(snapshot.sources["Codex"]?.status, "ok", "codex archived source status")
+        try assertEqual(snapshot.sources["Codex"]?.files, 1, "codex archived source files")
+        try assertEqual(snapshot.sources["Codex"]?.records, 1, "codex archived source records")
+        try assertEqual(snapshot.totals.tokens, 120, "codex archived total tokens")
+        try assertEqual(snapshot.daily.first?.date, "2026-06-22", "codex archived daily date")
+        try assertEqual(snapshot.daily.first?.tools["Codex"], 120, "codex archived tool tokens")
+    }
+
     private static func runClaudeProxyDedupeChecks() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("TokenStepClaudeDedupeFixture-\(UUID().uuidString)", isDirectory: true)
@@ -280,6 +308,33 @@ struct CCSwitchProxyFixtureCheck {
         try assertEqual(snapshot.totals.cost, 0.45, "codex dedupe total cost")
         try assertEqual(snapshot.daily.first?.tools["Codex"], 45, "codex native tokens")
         try assertNil(snapshot.daily.first?.tools["Codex via CC Switch"], "codex proxy duplicate tokens")
+    }
+
+    private static func codexLines(sessionID: String, totalTokens: Int) -> [String] {
+        [
+            jsonLine([
+                "type": "session_meta",
+                "timestamp": "2026-06-22T05:00:00Z",
+                "payload": ["id": sessionID]
+            ]),
+            jsonLine([
+                "type": "turn_context",
+                "timestamp": "2026-06-22T05:00:00Z",
+                "payload": ["model": "gpt-5"]
+            ]),
+            jsonLine([
+                "type": "event_msg",
+                "timestamp": "2026-06-22T05:00:00Z",
+                "payload": [
+                    "type": "token_count",
+                    "info": [
+                        "last_token_usage": [
+                            "total_tokens": totalTokens
+                        ]
+                    ]
+                ]
+            ])
+        ]
     }
 
     private static func makeFixtureDatabase(rowsSQL: String = defaultRowsSQL) throws -> URL {
