@@ -14,9 +14,7 @@ struct PopoverPanelView: View {
                 }
             }
             PopoverTodayRingCard()
-            if appState.settings.showCodexQuota {
-                PopoverQuotaCard()
-            }
+            PopoverQuotaCard()
             if appState.settings.showTokenRank {
                 PopoverTokenRankCard()
             }
