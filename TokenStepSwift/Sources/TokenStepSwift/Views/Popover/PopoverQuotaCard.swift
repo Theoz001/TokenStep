@@ -3,8 +3,11 @@ import SwiftUI
 struct PopoverQuotaCard: View {
     @EnvironmentObject private var appState: AppState
 
-    private var topModels: [ModelUsage] {
-        Array(appState.snapshot.models.sorted { $0.tokens > $1.tokens }.prefix(5))
+    private var topModels: [(name: String, tokens: Int)] {
+        (appState.today.models ?? [:])
+            .sorted { $0.value > $1.value }
+            .prefix(5)
+            .map { (name: $0.key, tokens: $0.value) }
     }
 
     private var totalModelTokens: Int {
@@ -18,7 +21,7 @@ struct PopoverQuotaCard: View {
                     Circle()
                         .fill(Color.tokenGreen)
                         .frame(width: 8, height: 8)
-                    Text(L("模型用量"))
+                    Text(L("今日模型用量"))
                         .font(.callout.weight(.heavy))
                         .foregroundStyle(Color.tokenInk)
                     Spacer()
@@ -43,7 +46,7 @@ struct PopoverQuotaCard: View {
                     .padding(.vertical, 2)
                 } else {
                     VStack(spacing: 10) {
-                        ForEach(topModels) { model in
+                        ForEach(Array(topModels.enumerated()), id: \.offset) { _, model in
                             modelRow(model)
                         }
                     }
@@ -53,24 +56,18 @@ struct PopoverQuotaCard: View {
         .padding(.vertical, -2)
     }
 
-    private func modelRow(_ model: ModelUsage) -> some View {
+    private func modelRow(_ model: (name: String, tokens: Int)) -> some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(tokenToolColor(model.tool ?? ""))
+                .fill(Color.tokenGreen)
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(model.model)
+                    Text(model.name)
                         .font(.caption.weight(.heavy))
                         .foregroundStyle(Color.tokenInk.opacity(0.82))
                         .lineLimit(1)
-                    if let tool = model.tool, !tool.isEmpty, tool != model.model {
-                        Text(tool)
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
                     Spacer()
                     Text(TokenStepFormat.tokens(model.tokens, compact: true))
                         .font(.caption.weight(.heavy))
@@ -83,7 +80,7 @@ struct PopoverQuotaCard: View {
                             .fill(Color.tokenGreen.opacity(0.10))
                         if totalModelTokens > 0 {
                             Capsule()
-                                .fill(tokenToolColor(model.tool ?? ""))
+                                .fill(Color.tokenGreen)
                                 .frame(width: max(5, proxy.size.width * CGFloat(model.tokens) / CGFloat(totalModelTokens)))
                         }
                     }
