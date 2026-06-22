@@ -362,6 +362,7 @@ enum UsageCollector {
         let root = home
             .appendingPathComponent("Library/Application Support/kimi-desktop/daimon-share/daimon/runtime/kimi-code/home/sessions", isDirectory: true)
         let paths = jsonlFiles(under: root, modifiedSince: cutoffDate).filter { $0.path.hasSuffix("/agents/main/wire.jsonl") }
+        let modelMapping = kimiModelMapping()
         var records: [UsageRecord] = []
         var seen = Set<String>()
 
@@ -393,7 +394,8 @@ enum UsageCollector {
                     else {
                         return
                     }
-                    let model = modelKey(obj["model"] as? String)
+                    let rawModel = modelKey(obj["model"] as? String)
+                    let model = modelMapping[rawModel] ?? rawModel
                     let key = "\(sessionID)|\(ts)|\(lineNumber)|\(usage.totalTokens)"
                     guard !seen.contains(key) else { return }
                     seen.insert(key)
@@ -429,6 +431,27 @@ enum UsageCollector {
                 records: records.count
             )
         )
+    }
+
+    private static func kimiModelMapping() -> [String: String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let configURL = home.appendingPathComponent("Library/Application Support/kimi-desktop/daimon-share/daimon/config.json")
+        guard let data = try? Data(contentsOf: configURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let modelConfig = json["model"] as? [String: Any],
+              let models = modelConfig["models"] as? [String: [String: Any]]
+        else {
+            return [:]
+        }
+        let friendlyNames: [String: String] = [
+            "k2p6": "Kimi 2.6"
+        ]
+        var mapping: [String: String] = [:]
+        for (key, entry) in models {
+            guard let actual = entry["model"] as? String else { continue }
+            mapping[key] = friendlyNames[actual] ?? actual
+        }
+        return mapping
     }
 
     private static func collectZCode(modifiedSince cutoffDate: Date?) -> CollectorResult {
