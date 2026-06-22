@@ -97,7 +97,7 @@ final class AppState: ObservableObject {
     }
 
     var appearanceID: String {
-        "\(settings.theme.id)-\(settings.language.resolved.id)"
+        "\(settings.theme.id)-\(settings.language.resolved.id)-\(settings.numberDisplayFormat.id)"
     }
 
     func load() {

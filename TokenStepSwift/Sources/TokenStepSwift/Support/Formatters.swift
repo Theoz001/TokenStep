@@ -86,6 +86,15 @@ enum TokenStepFormat {
         return formatter.string(from: NSNumber(value: value)) ?? "$0.00"
     }
 
+    static func moneyCNY(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "CNY"
+        formatter.currencySymbol = "¥"
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? "¥0.00"
+    }
+
     static func percent(_ value: Double) -> String {
         if value >= 100 { return "\(Int(value.rounded()))%" }
         if value >= 10 { return String(format: "%.1f%%", value) }

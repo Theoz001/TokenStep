@@ -27,11 +27,21 @@ struct StatsView: View {
     }
 
     private var modelRows: [UsageStatRow] {
-        let merged = appState.snapshot.models.reduce(into: [:]) { counts, usage in
+        let mergedTokens = appState.snapshot.models.reduce(into: [:]) { counts, usage in
             counts[usage.model, default: 0] += usage.tokens
         }
+        var mergedCostUSD: [String: Double] = [:]
+        var mergedCostCNY: [String: Double] = [:]
+        for day in appState.snapshot.daily {
+            for (model, cost) in day.modelCostUSD ?? [:] {
+                mergedCostUSD[model, default: 0] += cost
+            }
+            for (model, cost) in day.modelCostCNY ?? [:] {
+                mergedCostCNY[model, default: 0] += cost
+            }
+        }
         let total = max(appState.snapshot.totals.tokens, 1)
-        return merged
+        return mergedTokens
             .sorted { $0.value > $1.value }
             .prefix(10)
             .map { name, tokens in
@@ -39,7 +49,9 @@ struct StatsView: View {
                     name: name,
                     value: tokens,
                     percent: Double(tokens) * 100.0 / Double(total),
-                    color: .tokenGreen
+                    color: .tokenGreen,
+                    costUSD: mergedCostUSD[name] ?? 0,
+                    costCNY: mergedCostCNY[name] ?? 0
                 )
             }
     }
@@ -96,7 +108,9 @@ struct StatsView: View {
                             name: row.name,
                             value: "\(TokenStepFormat.tokens(row.value, compact: true)) · \(TokenStepFormat.percent(row.percent))",
                             percent: row.percent,
-                            color: row.color
+                            color: row.color,
+                            costUSD: row.costUSD,
+                            costCNY: row.costCNY
                         )
                     }
                 }
@@ -153,4 +167,6 @@ private struct UsageStatRow: Identifiable {
     var value: Int
     var percent: Double
     var color: Color
+    var costUSD: Double = 0
+    var costCNY: Double = 0
 }

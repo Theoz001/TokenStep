@@ -82,7 +82,7 @@ struct HistoryView: View {
         HStack(spacing: 16) {
             Text(L("日期")).frame(width: 118, alignment: .leading)
             Text(L("Token 消耗")).frame(width: 150, alignment: .leading)
-            Text(L("消耗金额")).frame(width: 126, alignment: .leading)
+            Text(L("消耗金额")).frame(width: 170, alignment: .leading)
             Text(L("主力工具")).frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.caption.weight(.heavy))
@@ -106,9 +106,10 @@ private struct HistoryRow: View {
                 .fontWeight(.heavy)
                 .foregroundStyle(Color.tokenInk)
                 .frame(width: 150, alignment: .leading)
-            Text(TokenStepFormat.money(row.cost))
-                .frame(width: 126, alignment: .leading)
+            Text("\(TokenStepFormat.money(row.cost)) / \(TokenStepFormat.moneyCNY(row.cost * TokenStepCostEstimator.exchangeRate))")
+                .frame(width: 170, alignment: .leading)
                 .foregroundStyle(Color.tokenInk.opacity(0.72))
+                .lineLimit(1)
             HStack(spacing: 8) {
                 Circle()
                     .fill(tokenToolColor(dominantTool))

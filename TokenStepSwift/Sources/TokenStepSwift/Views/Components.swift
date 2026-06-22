@@ -263,6 +263,8 @@ struct UsageProgressRow: View {
     var value: String
     var percent: Double
     var color: Color = .tokenGreen
+    var costUSD: Double = 0
+    var costCNY: Double = 0
 
     var body: some View {
         HStack(spacing: 14) {
@@ -284,13 +286,21 @@ struct UsageProgressRow: View {
             }
             .frame(height: 8)
 
-            Text(value)
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(width: 132, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(value)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if costUSD > 0 || costCNY > 0 {
+                    Text("\(TokenStepFormat.money(costUSD)) / \(TokenStepFormat.moneyCNY(costCNY))")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: 132, alignment: .trailing)
         }
-        .frame(height: 24)
+        .frame(height: costUSD > 0 || costCNY > 0 ? 36 : 24)
     }
 }
 
